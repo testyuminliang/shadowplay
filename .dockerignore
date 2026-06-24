@@ -1,0 +1,11 @@
+# 构建上下文里排除不需要进镜像的东西（迁到 Next.js 后可按需增减）
+node_modules
+.next
+.git
+.github
+*.log
+.DS_Store
+
+# 当前静态 POC 与验证套件不属于 Next.js 运行时镜像
+verify
+# files/  ← 迁移时若把 POC 资源并入 Next.js 的 public/ 再决定是否排除

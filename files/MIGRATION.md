@@ -1,12 +1,12 @@
 # nail.try — 虚拟美甲试戴 POC 迁移文档
 
 > **文档维护约定：** 每推进一步（debug / 迁移 / 新功能）都回来更新本文件，保持与代码同步。
-> 最近更新：2026-06-24 — 加入 Cloud Run 部署 workflow 骨架（占位待填）；接入 Git 仓库。
+> 最近更新：2026-06-24 — 加入 Next.js Dockerfile 骨架 + .dockerignore，推到 develop 分支。
 
 ## 代码仓库
 
 - **Remote：** `git@github.com-test:testyuminliang/nailtest.git`（SSH 别名 `github.com-test`，独立 key `~/.ssh/id_test_github`）
-- **默认分支：** `main`
+- **分支：** `main`（稳定）、`develop`（在建工作流，Dockerfile 等先落这里）
 - **首个提交：** `30aea4b` — POC（含 v6–v9 修复）+ 验证套件 + README + 本文档
 - **仓库结构：**
   ```
@@ -28,6 +28,12 @@
 - **构建/部署：** 主路径用 `deploy-cloudrun@v2` 的 **source 部署**（仓库根 Dockerfile 经 Cloud Build 构建，免手动管 Artifact Registry）；注释里留了「显式 docker build + push 到 AR」的替代 job。
 - **就绪前置：** 启用 Cloud Run/Cloud Build/Artifact Registry API；部署 SA 角色 `run.admin` + `cloudbuild.builds.editor` + `artifactregistry.writer` + `iam.serviceAccountUser` + `storage.admin`；仓库根需有 Dockerfile（草稿见下方「第五步」）。
 - 与下方「第五步：部署」里的 `cloudbuild.yaml` 是**两条等价路线**：现选用 GitHub Actions 这条，cloudbuild.yaml 作为 Cloud Build 直连的备选保留。
+
+### Dockerfile 骨架（仓库根，占位待迁移）
+- `Dockerfile` + `.dockerignore` 已落到仓库根，按 Next.js 14 **standalone** 产物写（多阶段构建，运行阶段只带 `server.js`+`.next/static`+`public`）。
+- **Cloud Run 友好：** `ENV PORT=8080 / HOSTNAME=0.0.0.0`，监听 Cloud Run 注入的 `$PORT`。
+- **当前构建会失败**（仓库还没 Next.js 应用，`npm ci` 找不到 package.json）——属预期占位。迁移时确保 `next.config.js` 设 `output:'standalone'`、`package.json` 有 `build` 脚本即可。
+- 当前在 `develop` 分支上。
 
 ## 项目背景
 
