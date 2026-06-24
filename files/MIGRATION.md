@@ -1,7 +1,7 @@
 # nail.try — 虚拟美甲试戴 POC 迁移文档
 
 > **文档维护约定：** 每推进一步（debug / 迁移 / 新功能）都回来更新本文件，保持与代码同步。
-> 最近更新：2026-06-24 — 接入 Git 仓库并首次推送（见「代码仓库」）；v9 完成 One Euro 平滑。
+> 最近更新：2026-06-24 — 加入 Cloud Run 部署 workflow 骨架（占位待填）；接入 Git 仓库。
 
 ## 代码仓库
 
@@ -16,6 +16,18 @@
   └── verify/            ← Puppeteer 无头浏览器验证套件（node_modules 已 gitignore）
   ```
 - **推送：** `git push origin main`（仓库非 git 起始，已 `git init` + 加 remote）。`verify/*.js` 的 Chrome 路径已改为 `process.env.CHROME_PATH` 可覆盖，便于他人运行。
+
+## CI/CD — Cloud Run 部署 workflow（骨架，占位待填）
+
+`.github/workflows/deploy-cloudrun.yml` —— **已搭架子，尚未可用**，等 Cloud Run 名字/位置定了再填。
+
+- **现状：** Cloud Run 服务名、地区都没定，文件里用占位值 + `TODO【待定】` 注释标出。
+- **触发：** 默认只 `workflow_dispatch`（手动）；占位填好后取消注释里的 `push: branches:[main]` 开启自动部署。
+- **占位变量（env，定了改这里）：** `GCP_PROJECT_ID`、`SERVICE_NAME`、`REGION`。
+- **认证：** 主用 Workload Identity Federation（免密钥，需 secrets `WIF_PROVIDER` / `GCP_DEPLOY_SA`）；注释里留了 SA JSON key 的替代写法。
+- **构建/部署：** 主路径用 `deploy-cloudrun@v2` 的 **source 部署**（仓库根 Dockerfile 经 Cloud Build 构建，免手动管 Artifact Registry）；注释里留了「显式 docker build + push 到 AR」的替代 job。
+- **就绪前置：** 启用 Cloud Run/Cloud Build/Artifact Registry API；部署 SA 角色 `run.admin` + `cloudbuild.builds.editor` + `artifactregistry.writer` + `iam.serviceAccountUser` + `storage.admin`；仓库根需有 Dockerfile（草稿见下方「第五步」）。
+- 与下方「第五步：部署」里的 `cloudbuild.yaml` 是**两条等价路线**：现选用 GitHub Actions 这条，cloudbuild.yaml 作为 Cloud Build 直连的备选保留。
 
 ## 项目背景
 

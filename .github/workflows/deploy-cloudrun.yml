@@ -1,0 +1,132 @@
+name: Deploy to Cloud Run
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Cloud Run 部署骨架（SCAFFOLD）
+#
+#  现状：服务名 (SERVICE_NAME) 与地区/位置 (REGION) 都还没定 —— 下方用占位值 +
+#  【TODO】注释标出。在把所有【TODO】填好、并在 GitHub 仓库里配好 Secrets 之前，
+#  这个 workflow 不会真正部署成功。所以默认只允许「手动触发」，等就绪了再打开
+#  push 自动触发（见下方 on: 注释）。
+#
+#  就绪前要准备的东西（等名字/位置定了再做）：
+#   1. 一个 GCP 项目，启用 API：Cloud Run / Cloud Build / Artifact Registry
+#   2. 一个有部署权限的 Service Account，至少这些角色：
+#        roles/run.admin            （部署 Cloud Run）
+#        roles/cloudbuild.builds.editor （source 部署会用 Cloud Build 构建）
+#        roles/artifactregistry.writer  （推镜像）
+#        roles/iam.serviceAccountUser   （以运行时 SA 身份部署）
+#        roles/storage.admin            （Cloud Build 暂存）
+#   3. 认证方式二选一（见下方 steps）：
+#        a) Workload Identity Federation（推荐，免密钥）
+#        b) Service Account JSON key（更简单，但要保管密钥）
+#   4. Next.js 迁移后，仓库根要有 Dockerfile（草稿见 files/MIGRATION.md 第五步）；
+#      source 部署也支持 buildpacks，但本项目已规划用 Dockerfile。
+#  参考：https://github.com/google-github-actions/deploy-cloudrun
+# ══════════════════════════════════════════════════════════════════════════
+
+on:
+  workflow_dispatch: {}        # 手动触发（现在就能点，但占位没填会失败）
+  # TODO【就绪后启用】占位填好 + Secrets 配好后，取消下面注释开启 push 自动部署：
+  # push:
+  #   branches: [main]
+
+# 同一时间只跑一个部署，新 push 取消进行中的旧部署
+concurrency:
+  group: deploy-cloudrun
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write              # Workload Identity Federation 需要它签发 OIDC token
+
+# ── 全局占位变量：名字/位置定了改这里即可 ───────────────────────────────────
+env:
+  # TODO【待定】GCP 项目 ID
+  GCP_PROJECT_ID: REPLACE_ME_PROJECT_ID
+
+  # TODO【待定】Cloud Run 服务名（名字还没定，先占位）
+  SERVICE_NAME: nail-try-on
+
+  # TODO【待定】部署地区 / location（位置还没定；示例为东京 asia-northeast1）
+  REGION: asia-northeast1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 认证到 GCP ──────────────────────────────────────────────────────
+      # 方式一（推荐）：Workload Identity Federation，免长期密钥
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # TODO【待定】WIF provider 资源名，建议存为 secret。格式：
+          #   projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          # TODO【待定】部署用 Service Account 邮箱（xxx@<project>.iam.gserviceaccount.com）
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      # 方式二（替代）：直接用 SA JSON key —— 把上面那段注释掉，启用这段
+      # - name: Authenticate to Google Cloud
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SA_KEY }}   # TODO【待定】整段 JSON 存到 secret
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── 部署到 Cloud Run ────────────────────────────────────────────────
+      # 主路径：source 部署 —— 直接用仓库根的 Dockerfile，经 Cloud Build 构建并部署，
+      # 不用自己 docker build / 管 Artifact Registry（Cloud Build 自动建 repo 推镜像）。
+      - name: Deploy to Cloud Run (from source)
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}     # TODO【待定】名字定了改上面的 env
+          region: ${{ env.REGION }}            # TODO【待定】位置定了改上面的 env
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          source: .                            # 仓库根（需有 Dockerfile）
+          # 公开访问就取消注释（否则默认需要鉴权）：
+          # flags: --allow-unauthenticated
+          # 运行时环境变量（之后接 Gemini/Imagen 时在这里加，或用 secrets:）：
+          # env_vars: |
+          #   NODE_ENV=production
+          # secrets: |
+          #   GEMINI_API_KEY=projects/<PROJECT_NUMBER>/secrets/GEMINI_API_KEY:latest
+
+      - name: Show service URL
+        run: echo "Deployed → ${{ steps.deploy.outputs.url }}"
+
+  # ── 替代方案：显式 docker build + push 到 Artifact Registry 再部署 ──────────
+  # 想完全自己控制镜像构建时，用下面这套替代上面的 deploy job：
+  # （需额外占位：AR_LOCATION / AR_REPOSITORY，且 Artifact Registry 里先建好 docker 仓库）
+  #
+  # deploy-explicit:
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     AR_LOCATION: asia-northeast1      # TODO【待定】镜像仓库地区（一般同 REGION）
+  #     AR_REPOSITORY: nail-try-on        # TODO【待定】Artifact Registry 仓库名
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: google-github-actions/auth@v2
+  #       with:
+  #         workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+  #         service_account: ${{ secrets.GCP_DEPLOY_SA }}
+  #     - uses: google-github-actions/setup-gcloud@v2
+  #     - name: Configure Docker for Artifact Registry
+  #       run: gcloud auth configure-docker ${{ env.AR_LOCATION }}-docker.pkg.dev --quiet
+  #     - name: Build & push image
+  #       run: |
+  #         IMAGE="${{ env.AR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+  #         docker build -t "$IMAGE" .
+  #         docker push "$IMAGE"
+  #         echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+  #     - name: Deploy to Cloud Run
+  #       uses: google-github-actions/deploy-cloudrun@v2
+  #       with:
+  #         service: ${{ env.SERVICE_NAME }}
+  #         region: ${{ env.REGION }}
+  #         project_id: ${{ env.GCP_PROJECT_ID }}
+  #         image: ${{ env.IMAGE }}
