@@ -448,12 +448,10 @@ function drawNails(lm, handKey, now, label) {
     ctx.save();
     ctx.font = '13px monospace'; ctx.globalAlpha = 0.85;
     ctx.fillStyle = palmFacing ? '#c06a7a' : '#4a9a6a';
-    ctx.fillText(`${label || '?'} ${palmFacing ? 'PALM → hide' : 'BACK → show'}  nz=${nz.toFixed(3)}`,
+    ctx.fillText(`${label || '?'} ${palmFacing ? 'PALM (curl still shows)' : 'BACK → show'}  nz=${nz.toFixed(3)}`,
                  lm[0].x * w + 8, lm[0].y * h);
     ctx.restore();
   }
-
-  if (palmFacing) return;   // palm side toward camera → no nails visible
 
   for (const f of FINGERS) {
     const dip = lm[f.dip], tip = lm[f.tip];
@@ -472,10 +470,7 @@ function drawNails(lm, handKey, now, label) {
     const seg = Math.hypot(tipX-dipX, tipY-dipY);
     if (seg < 12) continue;
 
-    // 2. z-check: tip far behind dip → finger curled away from camera
-    if (zDelta > 0.04) continue;
-
-    // 3. Finger completely folded into palm: tip close to MCP
+    // 2. Finger completely folded into palm: tip close to MCP
     const mcp = lm[f.pip - 1] || lm[f.pip]; // MCP is one before PIP in chain
     const tipMcpDist = Math.hypot(tip.x - mcp.x, tip.y - mcp.y);
     if (tipMcpDist < 0.04 && f.name !== 'thumb') continue;
@@ -488,15 +483,30 @@ function drawNails(lm, handKey, now, label) {
     const nailLen = seg * f.l * sizeScale;
     const nailWid = seg * f.w * sizeScale * widthScale;
 
-    // ── Opacity: fade as the nail tilts toward edge-on; hide once too grazing.
-    //    This is what tames the thumb when the hand turns sideways — its distal
-    //    segment then points toward/away from the camera (large |Δz|), so the
-    //    nail is seen edge-on and should disappear, not linger as a flat blob. ──
+    // ── Visibility: combine palm-facing with per-finger curl ─────────────────
+    //  A nail shows when its (dorsal) distal phalanx faces the camera:
+    //   • Curled TOWARD camera (cat-paw): zDelta clearly negative → the nail
+    //     rotates into view → SHOW regardless of palm/back. This is the override
+    //     that lets a cat-paw work even while the palm faces the camera.
+    //   • Otherwise (finger extended-ish):
+    //       – palm side toward camera → nail is on the far side → HIDE
+    //       – back side toward camera → SHOW, fading out as it tilts edge-on
+    //         (this is what hides the sideways thumb, v8).
+    const CURL_TOWARD = 0.04;               // zDelta below −this ⇒ curled toward camera (cat-paw)
     const zAbs = Math.abs(zDelta);
-    const fadeAlpha = zAbs > 0.02 ? 1 - (zAbs - 0.02) * 13 : 1;
-    if (fadeAlpha < 0.3) continue;          // too edge-on → nail not facing camera, hide it
+    let alpha;
+    if (zDelta < -CURL_TOWARD) {
+      alpha = 0.85;                         // cat-paw: nail curled into view
+    } else if (palmFacing) {
+      continue;                             // palm side + not curled → nail hidden
+    } else {
+      if (zDelta > 0.04) continue;          // back side, curled away → hide
+      const fade = zAbs > 0.02 ? 1 - (zAbs - 0.02) * 13 : 1;
+      if (fade < 0.3) continue;             // too edge-on (sideways thumb) → hide
+      alpha = fade * 0.85;
+    }
 
-    drawSingleNail(cx, cy, angle, nailLen, nailWid, fadeAlpha * 0.85);
+    drawSingleNail(cx, cy, angle, nailLen, nailWid, alpha);
   }
 }
 
