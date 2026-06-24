@@ -1,0 +1,17 @@
+{
+  "name": "nailtest-verify",
+  "version": "1.0.0",
+  "description": "Headless-Chrome verification harness for the nail.try POC",
+  "private": true,
+  "scripts": {
+    "smoke": "node test.js",
+    "jitter": "node jitter.js",
+    "thumb": "node thumb.js",
+    "align": "node align.js"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}
