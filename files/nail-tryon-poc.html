@@ -263,6 +263,7 @@
     <input type="range" min="0" max="100" value="60" id="smoothSlider">
     <span class="ctrl-val" id="smoothVal">60</span>
   </div>
+  <button class="btn-debug active" id="palmBtn" title="掌心朝镜头时隐藏甲片">Palm</button>
   <button class="btn-debug" id="debugBtn">Debug</button>
 </div>
 
@@ -276,6 +277,7 @@ let sizeScale  = 0.46;
 let widthScale = 0.60;
 let nailOffset = 0.72;
 let smoothAmt  = 0.60;   // One Euro smoothing strength: 0 = off (raw), 1 = max
+let palmHide   = true;   // hide nails when the palm (not the back) faces the camera
 let currentNail = { type: 'solid', color: '#e8889e' };
 
 const video  = document.getElementById('video');
@@ -413,9 +415,10 @@ function onResults(results) {
     const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     for (let i = 0; i < hands.length; i++) {
       // key smoothing state by hand chirality so each hand keeps its own filters
-      const key = (handed[i] && handed[i].label) ? handed[i].label : ('hand' + i);
+      const label = (handed[i] && handed[i].label) ? handed[i].label : null;
+      const key = label || ('hand' + i);
       if (showDebug) drawDebug(hands[i]);
-      drawNails(hands[i], key, now);
+      drawNails(hands[i], key, now, label);
     }
   } else {
     setStatus('', 'Show your hands');
@@ -423,8 +426,34 @@ function onResults(results) {
 }
 
 // ─── Nail Drawing (v2-based, reliable) ─────────────────────
-function drawNails(lm, handKey, now) {
+function drawNails(lm, handKey, now, label) {
   const w = canvas.width, h = canvas.height;
+
+  // ── Palm vs back of hand ───────────────────────────────────
+  // Nails live on the BACK of the hand, so when the palm faces the camera there
+  // are no nails to show. We read the z-component of the palm normal — which is
+  // just the 2D winding of the (wrist, indexMCP, pinkyMCP) triangle: ax*by-ay*bx.
+  // It needs NO depth (robust, unlike the per-finger normals that failed in v4)
+  // and the triangle is large (stable). Its sign means palm-vs-back per hand
+  // chirality; the (label, sign) combo is invariant to image mirroring, so this
+  // rule holds whether or not the camera feed is mirrored.
+  const ax = lm[5].x - lm[0].x, ay = lm[5].y - lm[0].y;
+  const bx = lm[17].x - lm[0].x, by = lm[17].y - lm[0].y;
+  const nz = smooth(handKey + ':palmnz', ax * by - ay * bx, now);  // smoothed to avoid boundary flicker
+  // |nz| small ⇒ hand edge-on / ambiguous ⇒ don't gate (per-finger fade handles it)
+  const palmFacing = palmHide && !!label && Math.abs(nz) > 0.008 &&
+                     ((label === 'Right') ? nz > 0 : nz < 0);
+
+  if (showDebug) {
+    ctx.save();
+    ctx.font = '13px monospace'; ctx.globalAlpha = 0.85;
+    ctx.fillStyle = palmFacing ? '#c06a7a' : '#4a9a6a';
+    ctx.fillText(`${label || '?'} ${palmFacing ? 'PALM → hide' : 'BACK → show'}  nz=${nz.toFixed(3)}`,
+                 lm[0].x * w + 8, lm[0].y * h);
+    ctx.restore();
+  }
+
+  if (palmFacing) return;   // palm side toward camera → no nails visible
 
   for (const f of FINGERS) {
     const dip = lm[f.dip], tip = lm[f.tip];
@@ -600,6 +629,10 @@ for (const [id, cfg] of Object.entries(sliders)) {
 document.getElementById('debugBtn').addEventListener('click', e => {
   showDebug = !showDebug;
   e.target.classList.toggle('active', showDebug);
+});
+document.getElementById('palmBtn').addEventListener('click', e => {
+  palmHide = !palmHide;
+  e.target.classList.toggle('active', palmHide);
 });
 document.getElementById('startBtn').addEventListener('click', () => startCamera());
 
