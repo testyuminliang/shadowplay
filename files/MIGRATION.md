@@ -1,7 +1,21 @@
 # nail.try — 虚拟美甲试戴 POC 迁移文档
 
 > **文档维护约定：** 每推进一步（debug / 迁移 / 新功能）都回来更新本文件，保持与代码同步。
-> 最近更新：2026-06-24 — 完成 v9（One Euro 时序平滑消抖 + Smooth 滑块），并新增「后续里程碑：像素级精度」方向。
+> 最近更新：2026-06-24 — 接入 Git 仓库并首次推送（见「代码仓库」）；v9 完成 One Euro 平滑。
+
+## 代码仓库
+
+- **Remote：** `git@github.com-test:testyuminliang/nailtest.git`（SSH 别名 `github.com-test`，独立 key `~/.ssh/id_test_github`）
+- **默认分支：** `main`
+- **首个提交：** `30aea4b` — POC（含 v6–v9 修复）+ 验证套件 + README + 本文档
+- **仓库结构：**
+  ```
+  nailtest/
+  ├── README.md          ← 启动 / 验证命令
+  ├── files/             ← 核心 POC + 启动脚本 + 本迁移文档
+  └── verify/            ← Puppeteer 无头浏览器验证套件（node_modules 已 gitignore）
+  ```
+- **推送：** `git push origin main`（仓库非 git 起始，已 `git init` + 加 remote）。`verify/*.js` 的 Chrome 路径已改为 `process.env.CHROME_PATH` 可覆盖，便于他人运行。
 
 ## 项目背景
 
