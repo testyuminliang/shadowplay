@@ -220,16 +220,8 @@
   <div class="sidebar">
     <div class="card">
       <div class="card-label">Choose a style</div>
-      <div class="nail-grid" id="nailGrid">
-        <div class="nail-swatch active" data-type="solid" data-color="#e8889e" style="background:#e8889e"></div>
-        <div class="nail-swatch" data-type="solid" data-color="#c9a0e4" style="background:#c9a0e4"></div>
-        <div class="nail-swatch" data-type="solid" data-color="#e47070" style="background:#e47070"></div>
-        <div class="nail-swatch" data-type="solid" data-color="#f4e0d0" style="background:#f4e0d0;border:1px solid #e8dcd0"></div>
-        <div class="nail-swatch" data-type="gradient" data-colors='["#f0a0b8","#a8b8f0"]' style="background:linear-gradient(135deg,#f0a0b8,#a8b8f0)"></div>
-        <div class="nail-swatch" data-type="gradient" data-colors='["#e8c0a0","#f0dca0"]' style="background:linear-gradient(135deg,#e8c0a0,#f0dca0)"></div>
-        <div class="nail-swatch" data-type="solid" data-color="#f0c8d0" style="background:#f0c8d0"></div>
-        <div class="nail-swatch" data-type="solid" data-color="#2d2226" style="background:#2d2226"></div>
-      </div>
+      <!-- swatches are generated from the design textures in JS (populateSwatches) -->
+      <div class="nail-grid" id="nailGrid"></div>
     </div>
     <div class="card" style="flex:1;">
       <div class="card-label">AI Generate</div>
@@ -327,6 +319,68 @@ function smooth(key, value, t) {
   if (!f) { f = new OneEuro(); _filters.set(key, f); }
   return f.filter(value, t);
 }
+
+// ─── Nail design textures (procedural, self-contained) ──────────────────────
+// Realism comes from TEXTURE, not flat color: each design is painted once onto a
+// small offscreen canvas (oriented tip→cuticle = top→bottom), then warped+clipped
+// onto each nail at draw time. Real / AI-generated PNGs can drop into the same
+// slot later (just put an <img>/canvas in design.tex). All self-contained — no
+// external assets, so the single-file POC still runs from localhost as-is.
+function rnd(a, b) { return a + Math.random() * (b - a); }
+function makeTexture(draw) {
+  const c = document.createElement('canvas');
+  c.width = 120; c.height = 180;
+  draw(c.getContext('2d'), c.width, c.height);
+  return c;
+}
+function vgrad(t, w, h, c1, c2) { const g = t.createLinearGradient(0, 0, 0, h); g.addColorStop(0, c1); g.addColorStop(1, c2); t.fillStyle = g; t.fillRect(0, 0, w, h); }
+function diag(t, w, h, c1, c2)  { const g = t.createLinearGradient(0, 0, w, h); g.addColorStop(0, c1); g.addColorStop(1, c2); t.fillStyle = g; t.fillRect(0, 0, w, h); }
+function glaze(t, w, h, c1, c2) {            // base gradient + soft sheen blob (glossy depth)
+  vgrad(t, w, h, c1, c2);
+  const g = t.createRadialGradient(w*0.4, h*0.32, 2, w*0.4, h*0.32, w);
+  g.addColorStop(0, 'rgba(255,255,255,0.20)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  t.fillStyle = g; t.fillRect(0, 0, w, h);
+}
+function plaid(t, w, h, col) {               // tartan / 格纹
+  t.save();
+  t.globalAlpha = 0.22; t.fillStyle = col;
+  for (let x = w*0.14; x < w; x += w*0.32) t.fillRect(x, 0, w*0.12, h);
+  for (let y = h*0.10; y < h; y += h*0.26) t.fillRect(0, y, w, h*0.07);
+  t.globalAlpha = 0.5; t.strokeStyle = col; t.lineWidth = 1.4;
+  for (let x = w*0.30; x < w; x += w*0.32) { t.beginPath(); t.moveTo(x, 0); t.lineTo(x, h); t.stroke(); }
+  t.restore();
+}
+function floral(t, w, h, col) {              // 碎花
+  t.save();
+  for (const [fx, fy] of [[0.30,0.30],[0.66,0.50],[0.40,0.74]]) {
+    const cx = fx*w, cy = fy*h, r = w*0.085;
+    t.fillStyle = col; t.globalAlpha = 0.85;
+    for (let i = 0; i < 5; i++) { const a = i/5*Math.PI*2; t.beginPath(); t.arc(cx+Math.cos(a)*r, cy+Math.sin(a)*r, r*0.6, 0, Math.PI*2); t.fill(); }
+    t.globalAlpha = 1; t.fillStyle = '#f0d86a'; t.beginPath(); t.arc(cx, cy, r*0.45, 0, Math.PI*2); t.fill();
+  }
+  t.restore();
+}
+function glitter(t, w, h, col) {             // 金箔 / 闪粉
+  t.save();
+  for (let i = 0; i < 150; i++) { t.globalAlpha = rnd(0.15, 0.7); t.fillStyle = col; const s = rnd(0.6, 2.1); t.fillRect(rnd(0, w), rnd(0, h), s, s); }
+  t.restore();
+}
+function frenchTip(t, w, h, col) {           // 法式：tip = 顶部（指尖方向）
+  t.save(); t.fillStyle = col;
+  t.beginPath(); t.moveTo(0, 0); t.lineTo(w, 0); t.lineTo(w, h*0.26);
+  t.quadraticCurveTo(w*0.5, h*0.42, 0, h*0.26); t.closePath(); t.fill();
+  t.restore();
+}
+const DESIGNS = [
+  { name: 'Navy',        make: () => makeTexture((t,w,h) => { glaze(t,w,h,'#244a86','#1a345f'); }) },
+  { name: 'Navy plaid',  make: () => makeTexture((t,w,h) => { glaze(t,w,h,'#244a86','#1a345f'); plaid(t,w,h,'rgba(255,255,255,0.55)'); }) },
+  { name: 'Cream floral',make: () => makeTexture((t,w,h) => { glaze(t,w,h,'#f3ead8','#e8dabf'); floral(t,w,h,'#244a86'); }) },
+  { name: 'Wine',        make: () => makeTexture((t,w,h) => { glaze(t,w,h,'#8a2230','#641723'); }) },
+  { name: 'Wine foil',   make: () => makeTexture((t,w,h) => { vgrad(t,w,h,'#8a2230','#5e1620'); glitter(t,w,h,'#e8c86a'); }) },
+  { name: 'French',      make: () => makeTexture((t,w,h) => { glaze(t,w,h,'#f7e7e0','#efd6cd'); frenchTip(t,w,h,'#ffffff'); }) },
+  { name: 'Lilac',       make: () => makeTexture((t,w,h) => { glaze(t,w,h,'#c9a0e4','#b487d6'); }) },
+  { name: 'Pink→Blue',   make: () => makeTexture((t,w,h) => { diag(t,w,h,'#f0a0b8','#a8b8f0'); }) },
+];
 
 function setStatus(cls, text) {
   const el = document.getElementById('status');
@@ -517,61 +571,65 @@ function drawNails(lm, handKey, now, label) {
 }
 
 function drawSingleNail(cx, cy, angle, len, wid, alpha) {
+  const rx = wid/2, ry = len/2;
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(angle - Math.PI/2);
 
-  const rx = wid/2, ry = len/2;
-
-  // ── Nail path ──
-  ctx.beginPath();
-  ctx.moveTo(0, ry * 0.82);                                    // cuticle center
-  ctx.bezierCurveTo(rx*0.5, ry*0.82, rx*0.85, ry*0.6, rx*0.92, ry*0.1);  // right cuticle→side
-  ctx.bezierCurveTo(rx*0.96, -ry*0.3, rx*0.8, -ry*0.8, rx*0.35, -ry);    // right side→tip
-  ctx.quadraticCurveTo(0, -ry*1.08, -rx*0.35, -ry);                        // tip arc
-  ctx.bezierCurveTo(-rx*0.8, -ry*0.8, -rx*0.96, -ry*0.3, -rx*0.92, ry*0.1); // left tip→side
-  ctx.bezierCurveTo(-rx*0.85, ry*0.6, -rx*0.5, ry*0.82, 0, ry*0.82);      // left side→cuticle
-  ctx.closePath();
-
-  // Fill
-  if (currentNail.type === 'solid') {
-    ctx.fillStyle = currentNail.color;
-  } else {
-    const g = ctx.createLinearGradient(0, -ry, 0, ry);
-    g.addColorStop(0, currentNail.colors[0]);
-    g.addColorStop(1, currentNail.colors[1]);
-    ctx.fillStyle = g;
+  // Nail outline, reused for shadow / clip / rim.
+  function nailPath() {
+    ctx.beginPath();
+    ctx.moveTo(0, ry * 0.82);                                       // cuticle center
+    ctx.bezierCurveTo(rx*0.5, ry*0.82, rx*0.85, ry*0.6, rx*0.92, ry*0.1);
+    ctx.bezierCurveTo(rx*0.96, -ry*0.3, rx*0.8, -ry*0.8, rx*0.35, -ry);
+    ctx.quadraticCurveTo(0, -ry*1.08, -rx*0.35, -ry);               // tip arc
+    ctx.bezierCurveTo(-rx*0.8, -ry*0.8, -rx*0.96, -ry*0.3, -rx*0.92, ry*0.1);
+    ctx.bezierCurveTo(-rx*0.85, ry*0.6, -rx*0.5, ry*0.82, 0, ry*0.82);
+    ctx.closePath();
   }
+
   ctx.globalAlpha = alpha;
-  ctx.fill();
 
-  // ── Gloss layers ──
-  // Narrow vertical highlight
-  ctx.globalAlpha = alpha * 0.20;
-  ctx.beginPath();
-  ctx.ellipse(-rx*0.28, -ry*0.05, rx*0.05, ry*0.55, 0, 0, Math.PI*2);
-  ctx.fillStyle = '#fff';
+  // ① soft drop shadow → nail looks "attached", not floating
+  ctx.save();
+  nailPath();
+  ctx.shadowColor = 'rgba(30,15,20,0.45)';
+  ctx.shadowBlur = Math.max(3, rx*0.45);
+  ctx.shadowOffsetY = Math.max(1, ry*0.06);
+  ctx.fillStyle = 'rgba(90,70,70,1)';        // caster — covered by the texture next
   ctx.fill();
+  ctx.restore();
 
-  // Wider soft glow
-  ctx.globalAlpha = alpha * 0.08;
-  ctx.beginPath();
-  ctx.ellipse(-rx*0.12, 0, rx*0.18, ry*0.5, 0, 0, Math.PI*2);
-  ctx.fillStyle = '#fff';
-  ctx.fill();
+  // ② design texture, clipped to the nail shape
+  ctx.save();
+  nailPath();
+  ctx.clip();
+  const tex = currentNail && currentNail.tex;
+  if (tex) ctx.drawImage(tex, -rx, -ry*1.08, wid, ry*1.9);
+  else { ctx.fillStyle = '#e8889e'; ctx.fillRect(-rx, -ry*1.1, wid, ry*2.2); }
 
-  // Cuticle shadow
-  ctx.globalAlpha = alpha * 0.10;
-  ctx.beginPath();
-  ctx.ellipse(0, ry*0.65, rx*0.6, ry*0.12, 0, 0, Math.PI*2);
-  ctx.fillStyle = 'rgba(60,30,30,1)';
-  ctx.fill();
+  // ③ gloss on top (still clipped): broad sheen + specular streak + cuticle shadow
+  const g = ctx.createLinearGradient(-rx, -ry, rx*0.5, ry);
+  g.addColorStop(0,    'rgba(255,255,255,0.38)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.06)');
+  g.addColorStop(1,    'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(-rx, -ry*1.1, wid, ry*2.2);
+  ctx.globalAlpha = alpha * 0.55;
+  ctx.beginPath(); ctx.ellipse(-rx*0.30, -ry*0.10, rx*0.07, ry*0.5, 0, 0, Math.PI*2);
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.globalAlpha = alpha * 0.16;
+  ctx.beginPath(); ctx.ellipse(0, ry*0.7, rx*0.7, ry*0.12, 0, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(40,20,25,1)'; ctx.fill();
+  ctx.restore();
 
-  // Edge
-  ctx.globalAlpha = alpha * 0.15;
-  ctx.strokeStyle = 'rgba(40,20,25,0.35)';
-  ctx.lineWidth = 0.5;
+  // ④ subtle bright rim along the edge
+  ctx.save();
+  nailPath();
+  ctx.globalAlpha = alpha * 0.45;
+  ctx.lineWidth = Math.max(0.6, rx*0.04);
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
   ctx.stroke();
+  ctx.restore();
 
   ctx.restore();
 }
@@ -616,14 +674,29 @@ function drawDebug(lm) {
 }
 
 // ─── UI ─────────────────────────────────────────────────────
-document.getElementById('nailGrid').addEventListener('click', e => {
-  const sw = e.target.closest('.nail-swatch');
-  if (!sw) return;
-  document.querySelectorAll('.nail-swatch').forEach(s => s.classList.remove('active'));
-  sw.classList.add('active');
-  if (sw.dataset.type === 'solid') currentNail = { type:'solid', color:sw.dataset.color };
-  else currentNail = { type:'gradient', colors:JSON.parse(sw.dataset.colors) };
-});
+// Build the style swatches from the generated design textures; the swatch
+// preview is the actual texture, so what you pick is what gets painted.
+function populateSwatches() {
+  const grid = document.getElementById('nailGrid');
+  grid.innerHTML = '';
+  DESIGNS.forEach((d, i) => {
+    d.tex = d.make();
+    const sw = document.createElement('div');
+    sw.className = 'nail-swatch' + (i === 0 ? ' active' : '');
+    sw.title = d.name;
+    sw.style.backgroundImage = `url(${d.tex.toDataURL()})`;
+    sw.style.backgroundSize = 'cover';
+    sw.style.backgroundPosition = 'center';
+    sw.addEventListener('click', () => {
+      grid.querySelectorAll('.nail-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      currentNail = { tex: d.tex };
+    });
+    grid.appendChild(sw);
+  });
+  currentNail = { tex: DESIGNS[0].tex };
+}
+populateSwatches();
 
 // NOTE: assign to the lexical `let` bindings directly via setters.
 // A top-level `let` is NOT a property of `window`, so `window.sizeScale = …`
