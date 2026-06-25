@@ -453,6 +453,8 @@ function drawNails(lm, handKey, now, label) {
     ctx.restore();
   }
 
+  const CURL_COS = 0.4;   // finger counts as "curled" when cos(proximal,distal) < this (tunable)
+
   for (const f of FINGERS) {
     const dip = lm[f.dip], tip = lm[f.tip];
     const k = handKey + ':' + f.name;
@@ -470,41 +472,45 @@ function drawNails(lm, handKey, now, label) {
     const seg = Math.hypot(tipX-dipX, tipY-dipY);
     if (seg < 12) continue;
 
-    // 2. Finger completely folded into palm: tip close to MCP
-    const mcp = lm[f.pip - 1] || lm[f.pip]; // MCP is one before PIP in chain
+    // 2. Finger curl — robust 2D measure (NO depth, unlike the noisy zDelta).
+    //    cos of the angle between proximal (MCP→PIP) and distal (DIP→TIP):
+    //    straight finger ≈ +1; curled past ~90° goes toward / below 0.
+    const pip = lm[f.pip], mcp = lm[f.pip - 1] || lm[f.pip];
+    const q1x = pip.x - mcp.x, q1y = pip.y - mcp.y;
+    const q2x = tip.x - dip.x, q2y = tip.y - dip.y;
+    const straight = smooth(k+':straight',
+        (q1x*q2x + q1y*q2y) / (Math.hypot(q1x,q1y) * Math.hypot(q2x,q2y) + 1e-6), now);
+    const curled = straight < CURL_COS;
+
+    // 3. Finger fully folded into a fist (tip almost on the MCP) → skip
     const tipMcpDist = Math.hypot(tip.x - mcp.x, tip.y - mcp.y);
     if (tipMcpDist < 0.04 && f.name !== 'thumb') continue;
+
+    // ── Visibility: palm-facing XOR curl ─────────────────────────────────────
+    //  The nail faces the camera when palm-orientation and curl agree:
+    //   • extended finger → visible ⟺ BACK of hand faces camera
+    //   • curled finger   → the distal phalanx has rotated ~180°, inverting it →
+    //                        visible ⟺ PALM faces camera  (this is the cat-paw)
+    //  ⇒ visible ⟺ (palmFacing === curled). Flat palm hides, cat-paw shows,
+    //    back-of-hand shows, back-facing fist hides. All from depth-free signals.
+    if (palmFacing !== curled) continue;
+
+    // Edge-on fade only applies to the normal back+extended view (hides the
+    // sideways thumb, v8); cat-paw / curled nails draw at full strength.
+    let alpha = 0.85;
+    if (!palmFacing && !curled) {
+      const zAbs = Math.abs(zDelta);
+      const fade = zAbs > 0.02 ? 1 - (zAbs - 0.02) * 13 : 1;
+      if (fade < 0.3) continue;             // too edge-on → hide
+      alpha = fade * 0.85;
+    }
 
     // ── Geometry ──
     const cx = dipX + (tipX - dipX) * nailOffset;
     const cy = dipY + (tipY - dipY) * nailOffset;
     const angle = Math.atan2(tipY - dipY, tipX - dipX);
-
     const nailLen = seg * f.l * sizeScale;
     const nailWid = seg * f.w * sizeScale * widthScale;
-
-    // ── Visibility: combine palm-facing with per-finger curl ─────────────────
-    //  A nail shows when its (dorsal) distal phalanx faces the camera:
-    //   • Curled TOWARD camera (cat-paw): zDelta clearly negative → the nail
-    //     rotates into view → SHOW regardless of palm/back. This is the override
-    //     that lets a cat-paw work even while the palm faces the camera.
-    //   • Otherwise (finger extended-ish):
-    //       – palm side toward camera → nail is on the far side → HIDE
-    //       – back side toward camera → SHOW, fading out as it tilts edge-on
-    //         (this is what hides the sideways thumb, v8).
-    const CURL_TOWARD = 0.04;               // zDelta below −this ⇒ curled toward camera (cat-paw)
-    const zAbs = Math.abs(zDelta);
-    let alpha;
-    if (zDelta < -CURL_TOWARD) {
-      alpha = 0.85;                         // cat-paw: nail curled into view
-    } else if (palmFacing) {
-      continue;                             // palm side + not curled → nail hidden
-    } else {
-      if (zDelta > 0.04) continue;          // back side, curled away → hide
-      const fade = zAbs > 0.02 ? 1 - (zAbs - 0.02) * 13 : 1;
-      if (fade < 0.3) continue;             // too edge-on (sideways thumb) → hide
-      alpha = fade * 0.85;
-    }
 
     drawSingleNail(cx, cy, angle, nailLen, nailWid, alpha);
   }
