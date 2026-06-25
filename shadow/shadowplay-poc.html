@@ -8,59 +8,47 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    /* warm "wall" palette, tuned to the reference shadow-play photos (mauve/taupe) */
     --wall-1: #e9dad4;
     --wall-2: #d7c2bb;
     --wall-3: #cbb4ac;
-    --shadow: 26, 18, 18;        /* rgb of the projected shadow (warm near-black) */
     --ink: #3a2c2c;
     --ink-soft: #8a7a76;
     --accent: #b5705f;
     --card: rgba(255,255,255,0.72);
+    --green: #6baf72;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { height:100%; }
   body {
     font-family: 'Noto Sans SC','DM Sans', system-ui, sans-serif;
-    color: var(--ink); overflow:hidden;
-    background: #2a2422;
+    color: var(--ink); overflow:hidden; background: #2a2422;
   }
-
   .stage {
     position:fixed; inset:0;
-    /* the wall — a soft warm gradient with a gentle vignette */
-    background:
-      radial-gradient(120% 90% at 50% 25%, var(--wall-1) 0%, var(--wall-2) 55%, var(--wall-3) 100%);
+    background: radial-gradient(120% 90% at 50% 25%, var(--wall-1) 0%, var(--wall-2) 55%, var(--wall-3) 100%);
   }
-  /* subtle paper grain over the wall */
   .stage::after {
     content:''; position:absolute; inset:0; pointer-events:none;
     opacity:0.05; mix-blend-mode:multiply;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
-
-  /* the camera feed lives behind the shadow; faded out by default so the wall+shadow read as "real" */
   #video {
     position:absolute; inset:0; width:100%; height:100%;
     object-fit:cover; transform:scaleX(-1);
     opacity:0; transition:opacity 0.4s; pointer-events:none;
   }
   .stage.show-cam #video { opacity:0.32; }
-
-  /* shadow canvas — transparent except where the silhouette is drawn */
   #shadow {
     position:absolute; inset:0; width:100%; height:100%;
     object-fit:cover; transform:scaleX(-1); pointer-events:none;
   }
 
-  /* ── header ── */
+  /* ── topbar ── */
   .topbar {
     position:absolute; top:0; left:0; right:0; z-index:10;
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 20px;
+    display:flex; align-items:center; justify-content:space-between; padding:14px 20px;
   }
   .logo { font-weight:700; font-size:17px; letter-spacing:-0.01em; display:flex; align-items:center; gap:8px; }
-  .logo .moon { font-size:18px; }
   .logo span { color:var(--accent); }
   .pill {
     font-size:12px; color:var(--ink-soft); background:var(--card);
@@ -68,9 +56,88 @@
     display:flex; align-items:center; gap:7px; box-shadow:0 2px 10px rgba(60,40,40,0.06);
   }
   .dot { width:7px; height:7px; border-radius:50%; background:#c4b3ad; transition:background .3s; }
-  .pill.on .dot { background:#7fae84; }
+  .pill.on .dot { background:var(--green); }
   .pill.loading .dot { background:#e0b066; animation:pulse 1s infinite; }
   @keyframes pulse { 50%{opacity:.3;} }
+
+  /* ── guide panel (right) ── */
+  .guide {
+    position:absolute; right:16px; top:60px; width:210px; z-index:10;
+    background:rgba(255,255,255,0.90); backdrop-filter:blur(14px);
+    border-radius:16px; box-shadow:0 4px 24px rgba(60,40,40,0.12);
+    border:1px solid rgba(140,110,100,0.12);
+    padding:14px 13px; display:none; flex-direction:column; align-items:center; gap:10px;
+  }
+  .guide.visible { display:flex; }
+  .guide-header { display:flex; align-items:center; gap:9px; align-self:flex-start; }
+  .guide-emoji  { font-size:26px; }
+  .guide-name   { font-size:17px; font-weight:700; }
+  .guide-hint {
+    font-size:11.5px; color:var(--ink-soft); line-height:1.65; text-align:left;
+    background:rgba(181,112,95,0.07); padding:8px 10px; border-radius:8px; width:100%;
+  }
+  /* finger state bars */
+  .finger-viz { display:flex; gap:5px; align-items:flex-end; height:58px; }
+  .finger-col  { display:flex; flex-direction:column; align-items:center; gap:3px; }
+  .finger-bar  { width:20px; border-radius:5px 5px 2px 2px; transition:height .25s, background .25s, opacity .2s; }
+  .finger-bar.target-up   { background:var(--accent); }
+  .finger-bar.target-down { background:#d4c8c4; }
+  .finger-bar.target-any  { background:#b0a09a; }
+  .finger-bar.dim         { opacity:0.35; }
+  .finger-label { font-size:9px; color:var(--ink-soft); }
+  /* match ring */
+  .match-wrap { position:relative; width:68px; height:68px; }
+  .match-wrap svg { width:100%; height:100%; }
+  .match-pct {
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:700; color:var(--ink);
+  }
+  .match-banner {
+    width:100%; padding:7px; text-align:center; border-radius:8px;
+    background:var(--green); color:#fff; font-weight:700; font-size:12.5px;
+    opacity:0; transition:opacity .3s; pointer-events:none;
+  }
+  .match-banner.show { opacity:1; }
+
+  /* ── animal selector ── */
+  .animal-bar {
+    position:absolute; left:0; right:0; bottom:52px; z-index:10;
+    display:flex; align-items:center; gap:6px; overflow-x:auto;
+    padding:8px 16px; scrollbar-width:none;
+  }
+  .animal-bar::-webkit-scrollbar { display:none; }
+  .animal-btn {
+    flex-shrink:0; padding:7px 13px; border-radius:20px; cursor:pointer; border:none;
+    font-family:inherit; font-size:13px; font-weight:500;
+    background:var(--card); backdrop-filter:blur(8px); color:var(--ink);
+    box-shadow:0 2px 8px rgba(60,40,40,0.07); transition:all .18s; white-space:nowrap;
+  }
+  .animal-btn:hover { transform:translateY(-1px); background:rgba(255,255,255,0.92); }
+  .animal-btn.active { background:var(--accent); color:#fff; box-shadow:0 4px 14px rgba(181,112,95,0.35); }
+
+  /* ── controls ── */
+  .controls {
+    position:absolute; left:0; right:0; bottom:0; z-index:10;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center;
+    padding:7px 16px; background:rgba(255,255,255,0.55); backdrop-filter:blur(10px);
+    border-top:1px solid rgba(255,255,255,0.5); height:52px;
+  }
+  .ctrl { display:flex; align-items:center; gap:7px; }
+  .ctrl label { font-size:10px; color:var(--ink-soft); white-space:nowrap; }
+  .ctrl input[type=range] {
+    width:80px; -webkit-appearance:none; height:3px; border-radius:2px;
+    background:#c9b8b2; outline:none;
+  }
+  .ctrl input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:#fff; border:2px solid var(--accent); cursor:pointer;
+  }
+  .toggle {
+    font-size:11px; padding:5px 11px; border-radius:16px; cursor:pointer;
+    background:rgba(255,255,255,0.6); border:1px solid rgba(140,110,100,0.18); color:var(--ink-soft);
+    transition:all .2s;
+  }
+  .toggle.active { color:#fff; background:var(--accent); border-color:var(--accent); }
 
   /* ── start overlay ── */
   .start {
@@ -80,7 +147,7 @@
     text-align:center; padding:24px;
   }
   .start h1 { font-size:26px; font-weight:700; letter-spacing:-0.01em; }
-  .start p { font-size:14px; color:var(--ink-soft); max-width:380px; line-height:1.7; }
+  .start p  { font-size:14px; color:var(--ink-soft); max-width:380px; line-height:1.7; }
   .btn {
     padding:13px 40px; border:none; border-radius:30px; cursor:pointer;
     background:var(--accent); color:#fff; font-family:inherit; font-size:15px; font-weight:600;
@@ -88,42 +155,6 @@
   }
   .btn:hover { transform:translateY(-1px); background:#a5604f; }
   .hint { display:none; font-size:12px; color:#a5604f; max-width:380px; line-height:1.7; }
-
-  /* ── try-these gesture chips ── */
-  .chips {
-    position:absolute; left:50%; bottom:74px; transform:translateX(-50%); z-index:10;
-    display:flex; gap:7px; flex-wrap:wrap; justify-content:center; max-width:92vw;
-  }
-  .chip {
-    font-size:13px; padding:7px 14px; border-radius:20px; cursor:default;
-    background:var(--card); backdrop-filter:blur(8px); color:var(--ink);
-    box-shadow:0 2px 8px rgba(60,40,40,0.07); white-space:nowrap;
-  }
-  .chip b { font-weight:700; margin-right:5px; }
-
-  /* ── controls ── */
-  .controls {
-    position:absolute; left:0; right:0; bottom:0; z-index:10;
-    display:flex; align-items:center; gap:18px; flex-wrap:wrap; justify-content:center;
-    padding:11px 20px; background:rgba(255,255,255,0.55); backdrop-filter:blur(10px);
-    border-top:1px solid rgba(255,255,255,0.5);
-  }
-  .ctrl { display:flex; align-items:center; gap:8px; }
-  .ctrl label { font-size:11px; color:var(--ink-soft); white-space:nowrap; }
-  .ctrl input[type=range] {
-    width:90px; -webkit-appearance:none; appearance:none; height:3px; border-radius:2px;
-    background:#c9b8b2; outline:none;
-  }
-  .ctrl input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
-    background:#fff; border:2px solid var(--accent); cursor:pointer;
-  }
-  .toggle {
-    font-size:12px; padding:6px 13px; border-radius:18px; cursor:pointer;
-    background:rgba(255,255,255,0.6); border:1px solid rgba(140,110,100,0.18); color:var(--ink-soft);
-    transition:all .2s;
-  }
-  .toggle.active { color:#fff; background:var(--accent); border-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -133,244 +164,452 @@
   <canvas id="shadow"></canvas>
 
   <div class="topbar">
-    <div class="logo"><span class="moon">🌙</span>Shadow<span>Play</span></div>
+    <div class="logo">🌙 Shadow<span>Play</span></div>
     <div class="pill" id="status"><span class="dot"></span><span class="status-text">初始化中…</span></div>
   </div>
 
-  <div class="chips" id="chips"></div>
+  <!-- Gesture guide panel -->
+  <div class="guide" id="guide">
+    <div class="guide-header">
+      <span class="guide-emoji" id="gEmoji"></span>
+      <span class="guide-name"  id="gName"></span>
+    </div>
+    <div class="finger-viz" id="fingerViz"></div>
+    <div class="guide-hint" id="gHint"></div>
+    <div class="match-wrap">
+      <svg viewBox="0 0 60 60">
+        <circle cx="30" cy="30" r="24" fill="none" stroke="#e0d8d5" stroke-width="5"/>
+        <circle id="matchArc" cx="30" cy="30" r="24" fill="none" stroke="var(--green)" stroke-width="5"
+          stroke-dasharray="150.796" stroke-dashoffset="150.796"
+          stroke-linecap="round" transform="rotate(-90 30 30)"/>
+      </svg>
+      <div class="match-pct" id="matchPct">0%</div>
+    </div>
+    <div class="match-banner" id="matchBanner">✓ 完美手势！</div>
+  </div>
 
+  <!-- Animal buttons -->
+  <div class="animal-bar" id="animalBar"></div>
+
+  <!-- Shadow controls -->
   <div class="controls">
     <div class="ctrl"><label>手指粗细</label><input type="range" id="thickR" min="80" max="220" value="130"></div>
-    <div class="ctrl"><label>影子大小</label><input type="range" id="sizeR" min="100" max="180" value="118"></div>
-    <div class="ctrl"><label>边缘柔化</label><input type="range" id="blurR" min="0" max="20" value="6"></div>
-    <div class="ctrl"><label>浓度</label><input type="range" id="darkR" min="40" max="100" value="86"></div>
-    <div class="ctrl"><label>光源偏移</label><input type="range" id="offR" min="0" max="60" value="22"></div>
-    <div class="ctrl"><label>平滑</label><input type="range" id="smoothR" min="0" max="100" value="55"></div>
-    <button class="toggle" id="camBtn">显示摄像头</button>
+    <div class="ctrl"><label>影子大小</label><input type="range" id="sizeR"  min="100" max="180" value="118"></div>
+    <div class="ctrl"><label>边缘柔化</label><input type="range" id="blurR"  min="0"   max="20"  value="6"></div>
+    <div class="ctrl"><label>浓度</label>    <input type="range" id="darkR"  min="40"  max="100" value="86"></div>
+    <div class="ctrl"><label>光源偏移</label><input type="range" id="offR"   min="0"   max="60"  value="22"></div>
+    <div class="ctrl"><label>平滑</label>    <input type="range" id="smoothR" min="0"  max="100" value="55"></div>
+    <button class="toggle" id="camBtn">摄像头</button>
     <button class="toggle" id="dbgBtn">骨架</button>
   </div>
 
   <div class="start" id="startOverlay">
     <h1>🌙 用你的手，投出一个影子</h1>
-    <p>对着摄像头比出手影手势（兔子、蝴蝶、小狗…），你的手会实时变成墙上的剪影。这是 ShadowPlay 互动绘本的第一步验证。</p>
+    <p>点击下方动物按钮选择目标，然后跟着教程做出手影，AI 会实时判断你的手势是否正确。</p>
     <button class="btn" id="startBtn">开启摄像头</button>
     <p class="hint" id="hint"></p>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"         crossorigin="anonymous"></script>
 <script>
-// ─── State ──────────────────────────────────────────────────
-let shadowSize = 1.18;   // silhouette scale (>1 → projected shadow is larger than the hand)
-let blurPx     = 6;      // soft edge
-let darkness   = 0.86;   // shadow opacity
-let lightOff   = 22;     // px offset (simulated light-source angle)
-let smoothAmt  = 0.55;   // One-Euro smoothing strength
-let thickness  = 1.30;   // finger/limb thickness multiplier (live-tunable, fights the spindly "horror" look)
-let showDebug  = false;
-
-const ANIMALS = [
-  ['🐰','兔子'],['🦋','蝴蝶'],['🐶','小狗'],['🦆','鸭子'],
-  ['🦢','天鹅'],['🦊','狐狸'],['🐌','蜗牛'],['🐻','小熊'],['🐊','鳄鱼'],
+// ═══════════════════════════════════════════════════════════════
+//  Animal gesture definitions
+//  required: [thumb, index, middle, ring, pinky]
+//    true  = finger must be extended (raised/spread)
+//    false = finger must be curled (down/closed)
+//    null  = don't-care
+// ═══════════════════════════════════════════════════════════════
+const GESTURE_DEFS = [
+  {
+    id:'rabbit', emoji:'🐰', name:'兔子',
+    required:[false, true, true, false, false],
+    hint:'食指+中指竖直向上做兔耳，拇指、无名指、小指完全握拳。',
+    tips:['两指要完全伸直','其余三指要握紧'],
+  },
+  {
+    id:'fox', emoji:'🦊', name:'狐狸',
+    required:[true, true, false, false, true],
+    hint:'拇指+食指+小指伸直张开（三叉），中指+无名指弯曲握拳。',
+    tips:['三指尽量张开','中间两指要完全弯曲'],
+  },
+  {
+    id:'dog', emoji:'🐶', name:'小狗',
+    required:[true, true, false, false, false],
+    hint:'拇指横向伸出，食指向上竖起，中指+无名指+小指握拳。',
+    tips:['食指竖直向上','拇指横向展开'],
+  },
+  {
+    id:'duck', emoji:'🦆', name:'鸭子',
+    required:[true, true, true, true, true],
+    hint:'五指全部伸直，四指并拢，拇指稍外张，手掌侧对镜头（鸭嘴方向）。',
+    tips:['手侧放，四指并拢','拇指略外张'],
+  },
+  {
+    id:'bear', emoji:'🐻', name:'小熊',
+    required:[true, true, true, true, true],
+    hint:'五指全部张开并稍弯，模拟熊爪抓握，手掌朝外。',
+    tips:['手指分开且微弯','五指全部要张开'],
+  },
+  {
+    id:'swan', emoji:'🦢', name:'天鹅',
+    required:[false, false, true, true, true],
+    hint:'拇指+食指弯曲对捏（天鹅嘴），中指+无名指+小指并拢伸直向上（颈）。',
+    tips:['三指并拢竖直','拇指食指捏成圆形'],
+  },
+  {
+    id:'butterfly', emoji:'🦋', name:'蝴蝶',
+    required:[true, true, true, true, true],
+    hint:'双手合拢，大拇指互扣交叉，其余四指全部张开如翅膀（需要双手）。',
+    tips:['需要双手合拢','两拇指交叉，四指展开'],
+    twoHands: true,
+  },
+  {
+    id:'snail', emoji:'🐌', name:'蜗牛',
+    required:[false, true, true, false, false],
+    hint:'食指+中指微弯向上如触角，其余三指握拳当蜗牛壳。',
+    tips:['两指稍弯，不要完全伸直','拳头当作壳'],
+  },
+  {
+    id:'crocodile', emoji:'🐊', name:'鳄鱼',
+    required:[true, true, true, true, true],
+    hint:'双手合拢，上下开合模拟鳄鱼嘴（也可单手：手掌水平展平，四指并拢）。',
+    tips:['手保持水平','四指并拢，拇指分开'],
+    twoHands: true,
+  },
 ];
+
+// ═══════════════════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════════════════
+let shadowSize=1.18, blurPx=6, darkness=0.86, lightOff=22, smoothAmt=0.55, thickness=1.30, showDebug=false;
+let currentGesture=null, matchHoldStart=null;
+const MATCH_THRESH=0.88, MATCH_HOLD_MS=1200;
+const FINGER_LABELS=['拇','食','中','环','小'];
 
 const stage  = document.getElementById('stage');
 const video  = document.getElementById('video');
 const canvas = document.getElementById('shadow');
 const ctx    = canvas.getContext('2d');
-// offscreen: draw an OPAQUE black silhouette here, then composite once (blurred,
-// faded) onto the main canvas. Compositing as one shape avoids the darker seams
-// you'd get from overlapping semi-transparent capsules drawn directly.
-const off    = document.createElement('canvas');           // raw skeleton (metaball input)
-const octx   = off.getContext('2d');
-const mb     = document.createElement('canvas');           // blurred+thresholded silhouette
-const mbx    = mb.getContext('2d', { willReadFrequently:true });
 
-// Metaball pipeline: draw a THIN skeleton, blur it heavily, then hard-threshold the
-// alpha. Strokes that sit close together (finger bases, knuckles) merge into smooth
-// webbed flesh; far-apart tips stay separate; every corner rounds off. This is what
-// turns a stick-figure into something that actually reads as a hand. Runs at half-res
-// so the per-frame getImageData readback stays cheap.
+// Offscreen pipeline: thin opaque skeleton → blur → hard-threshold alpha → composite
+const off  = document.createElement('canvas');
+const octx = off.getContext('2d');
+const mb   = document.createElement('canvas');
+const mbx  = mb.getContext('2d', { willReadFrequently:true });
+
 const MB_SCALE   = 0.5;
-let   mbBlurFrac = 0.04;   // blur radius as a fraction of hand scale (↑ = more merge/rounder)
-let   mbThresh   = 140;    // alpha cutoff after blur (↑ = thinner/tighter silhouette)
-let   frameScale = 1;      // max hand scale (off-canvas px) seen this frame → drives the blur
+let   mbBlurFrac = 0.048;   // larger → more palm merging, rounder joints
+let   mbThresh   = 112;     // lower  → fuller silhouette
+let   frameScale = 1;
 
-// bone skeleton (MediaPipe 21-pt). widths are FRACTIONS of hand scale (wrist→middle-MCP)
-// so the silhouette stays proportional at any distance, then ×`thickness` globally.
-// Fuller fingers (and rounded tips via the joint radii) keep it from looking spindly.
+// Bone definitions: [fromIdx, toIdx, widthFraction of hand scale]
+// Widths are intentionally generous → shadow reads as solid flesh, not a stick figure
 const BONES = [
-  // palm fan
-  [0,5,0.17],[0,9,0.17],[0,13,0.17],[0,17,0.17],[5,9,0.16],[9,13,0.16],[13,17,0.16],
+  // palm fan (wide to fill in the palm body)
+  [0,5,0.200],[0,9,0.200],[0,13,0.190],[0,17,0.180],
+  [5,9,0.180],[9,13,0.170],[13,17,0.160],
   // thumb
-  [0,1,0.125],[1,2,0.118],[2,3,0.108],[3,4,0.098],
+  [0,1,0.150],[1,2,0.140],[2,3,0.130],[3,4,0.115],
   // index
-  [5,6,0.108],[6,7,0.100],[7,8,0.090],
+  [5,6,0.130],[6,7,0.118],[7,8,0.105],
   // middle
-  [9,10,0.108],[10,11,0.100],[11,12,0.090],
+  [9,10,0.130],[10,11,0.118],[11,12,0.105],
   // ring
-  [13,14,0.102],[14,15,0.094],[15,16,0.084],
+  [13,14,0.122],[14,15,0.110],[15,16,0.098],
   // pinky
-  [17,18,0.094],[18,19,0.084],[19,20,0.074],
+  [17,18,0.112],[18,19,0.100],[19,20,0.088],
 ];
-// finger-base webbing: fill a triangle from two adjacent MCPs up to a "web apex"
-// (a fraction of the way toward the PIPs) so finger bases connect with flesh instead
-// of slitting all the way down to the palm centre. [mcpA, mcpB, pipA, pipB, apexFrac]
-const WEBS = [
-  [5,9,6,10,0.32],     // index–middle
-  [9,13,10,14,0.32],   // middle–ring
-  [13,17,14,18,0.30],  // ring–pinky
-  [1,5,2,6,0.22],      // thumb–index
-];
-const PALM = [0,1,2,5,9,13,17]; // filled palm polygon (corners get rounded by the metaball blur)
+// Palm polygon (filled) — includes thumb base and pinky PIP for full coverage
+const PALM = [0,1,2,5,9,13,17,18];
 
-// ─── One-Euro smoothing (from nail POC) ─────────────────────
+// Knuckle reinforcement: [landmarkIdx, radiusFraction]
+const KNUCKLES = [
+  [0,0.165],  // wrist hub
+  [1,0.105],[5,0.120],[9,0.120],[13,0.112],[17,0.105],  // CMC/MCP row
+];
+
+// Fingertip caps: keep tips round and full-looking
+const FINGERTIPS = [[4,0.102],[8,0.095],[12,0.095],[16,0.088],[20,0.082]];
+
+// ═══════════════════════════════════════════════════════════════
+//  One-Euro smoothing (stable, lag-free, from nail POC)
+// ═══════════════════════════════════════════════════════════════
 function euroMinCutoff(){ return Math.exp((1-smoothAmt)*Math.log(8)+smoothAmt*Math.log(0.4)); }
 const EURO_BETA=0.6, EURO_DCUTOFF=1.0;
 class OneEuro {
-  constructor(){ this.xPrev=null; this.dxPrev=0; this.tPrev=null; }
-  _a(c,dt){ const tau=1/(2*Math.PI*c); return 1/(1+tau/dt); }
+  constructor(){ this.xp=null; this.dp=0; this.tp=null; }
+  _a(c,dt){ return 1/(1+1/(2*Math.PI*c*dt)); }
   filter(x,t){
-    if(this.tPrev==null){ this.tPrev=t; this.xPrev=x; return x; }
-    let dt=(t-this.tPrev)/1000; if(!(dt>0)) dt=1/60; this.tPrev=t;
-    const dx=(x-this.xPrev)/dt; const aD=this._a(EURO_DCUTOFF,dt);
-    this.dxPrev=aD*dx+(1-aD)*this.dxPrev;
-    const c=euroMinCutoff()+EURO_BETA*Math.abs(this.dxPrev); const a=this._a(c,dt);
-    this.xPrev=a*x+(1-a)*this.xPrev; return this.xPrev;
+    if(this.tp==null){ this.tp=t; this.xp=x; return x; }
+    let dt=(t-this.tp)/1000; if(!(dt>0)) dt=1/60; this.tp=t;
+    const dx=(x-this.xp)/dt, aD=this._a(EURO_DCUTOFF,dt);
+    this.dp=aD*dx+(1-aD)*this.dp;
+    const a=this._a(euroMinCutoff()+EURO_BETA*Math.abs(this.dp),dt);
+    this.xp=a*x+(1-a)*this.xp; return this.xp;
   }
 }
 const filters=new Map();
 function smooth(key,v,t){
   if(smoothAmt<=0.001) return v;
-  let f=filters.get(key); if(!f){ f=new OneEuro(); filters.set(key,f); }
+  let f=filters.get(key); if(!f){f=new OneEuro();filters.set(key,f);}
   return f.filter(v,t);
 }
 
-// ─── UI helpers ─────────────────────────────────────────────
-function setStatus(cls,text){
+// ═══════════════════════════════════════════════════════════════
+//  Gesture detection
+// ═══════════════════════════════════════════════════════════════
+function detectFingers(lm) {
+  // Thumb: extended if tip is far from palm center relative to thumb IP
+  const palmCx = lm[9]; // middle MCP ≈ palm center
+  const tipD  = Math.hypot(lm[4].x-palmCx.x, lm[4].y-palmCx.y);
+  const ipD   = Math.hypot(lm[3].x-palmCx.x, lm[3].y-palmCx.y);
+  const thumbExt = tipD > ipD * 1.05;
+
+  // Fingers 1-4: tip above PIP (smaller y = higher in frame)
+  const indexExt  = lm[8].y  < lm[6].y  - 0.012;
+  const middleExt = lm[12].y < lm[10].y - 0.012;
+  const ringExt   = lm[16].y < lm[14].y - 0.012;
+  const pinkyExt  = lm[20].y < lm[18].y - 0.012;
+  return [thumbExt, indexExt, middleExt, ringExt, pinkyExt];
+}
+
+function scoreGesture(states, required) {
+  let s=0;
+  for(let i=0;i<5;i++){
+    if(required[i]===null) s++;
+    else if(states[i]===required[i]) s++;
+  }
+  return s/5;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  UI construction
+// ═══════════════════════════════════════════════════════════════
+function setStatus(cls,txt){
   const el=document.getElementById('status');
   el.className='pill'+(cls?' '+cls:'');
-  el.querySelector('.status-text').textContent=text;
+  el.querySelector('.status-text').textContent=txt;
 }
+
 function resize(){
-  const vw = video.videoWidth || 1280, vh = video.videoHeight || 720;
-  canvas.width = vw; canvas.height = vh;
-  off.width = mb.width  = Math.round(vw * MB_SCALE);   // metaball pipeline at half-res
-  off.height= mb.height = Math.round(vh * MB_SCALE);
+  const vw=video.videoWidth||1280, vh=video.videoHeight||720;
+  canvas.width=vw; canvas.height=vh;
+  off.width=mb.width=Math.round(vw*MB_SCALE);
+  off.height=mb.height=Math.round(vh*MB_SCALE);
 }
-(function chips(){
-  const c=document.getElementById('chips');
-  ANIMALS.forEach(([e,n])=>{ const d=document.createElement('div'); d.className='chip'; d.innerHTML=`<b>${e}</b>${n}`; c.appendChild(d); });
+
+// Build animal buttons
+(()=>{
+  const bar=document.getElementById('animalBar');
+  for(const g of GESTURE_DEFS){
+    const btn=document.createElement('button');
+    btn.className='animal-btn'; btn.dataset.id=g.id;
+    btn.innerHTML=`${g.emoji} ${g.name}`;
+    btn.onclick=()=>selectGesture(g.id, btn);
+    bar.appendChild(btn);
+  }
 })();
 
-// ─── MediaPipe ──────────────────────────────────────────────
+// Build finger viz
+(()=>{
+  const viz=document.getElementById('fingerViz');
+  for(let i=0;i<5;i++){
+    const col=document.createElement('div'); col.className='finger-col';
+    const bar=document.createElement('div');
+    bar.className='finger-bar target-any'; bar.id='fbar'+i; bar.style.height='34px';
+    const lbl=document.createElement('div');
+    lbl.className='finger-label'; lbl.textContent=FINGER_LABELS[i];
+    col.appendChild(bar); col.appendChild(lbl); viz.appendChild(col);
+  }
+})();
+
+function selectGesture(id, btnEl){
+  document.querySelectorAll('.animal-btn').forEach(b=>b.classList.remove('active'));
+  if(btnEl) btnEl.classList.add('active');
+  currentGesture=GESTURE_DEFS.find(g=>g.id===id)||null;
+  matchHoldStart=null;
+  const guide=document.getElementById('guide');
+  if(!currentGesture){ guide.classList.remove('visible'); return; }
+  guide.classList.add('visible');
+  document.getElementById('gEmoji').textContent=currentGesture.emoji;
+  document.getElementById('gName').textContent =currentGesture.name;
+  document.getElementById('gHint').textContent =currentGesture.hint;
+  document.getElementById('matchBanner').classList.remove('show');
+  renderFingerBars(currentGesture.required, null);
+  updateArc(0);
+  document.getElementById('matchPct').textContent='0%';
+}
+
+function renderFingerBars(required, states){
+  for(let i=0;i<5;i++){
+    const bar=document.getElementById('fbar'+i);
+    const req=required[i];
+    bar.className='finger-bar '+(req===true?'target-up':req===false?'target-down':'target-any');
+    bar.style.height=(req===true?'50px':req===false?'20px':'34px');
+    if(states!==null){
+      const match=(req===null)||(states[i]===req);
+      bar.classList.toggle('dim',!match);
+    } else {
+      bar.classList.remove('dim');
+    }
+  }
+}
+
+function updateArc(score){
+  const pct=Math.round(score*100);
+  document.getElementById('matchPct').textContent=pct+'%';
+  const offset=150.796*(1-score);
+  const arc=document.getElementById('matchArc');
+  arc.setAttribute('stroke-dashoffset', offset);
+  arc.setAttribute('stroke',
+    score>=MATCH_THRESH ? 'var(--green)' :
+    score>=0.70         ? '#e0b066'      :
+                          'var(--accent)');
+}
+
+function updateGestureUI(score, states){
+  if(!currentGesture) return;
+  renderFingerBars(currentGesture.required, states);
+  updateArc(score);
+  const banner=document.getElementById('matchBanner');
+  if(score>=MATCH_THRESH){
+    if(!matchHoldStart) matchHoldStart=performance.now();
+    if(performance.now()-matchHoldStart>=MATCH_HOLD_MS) banner.classList.add('show');
+  } else {
+    matchHoldStart=null; banner.classList.remove('show');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  MediaPipe setup
+// ═══════════════════════════════════════════════════════════════
 let handsReady=false, mpHands;
 function initHands(){
   setStatus('loading','加载模型…');
   try{
-    mpHands=new Hands({ locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}` });
-    // looser thresholds → better two-hand pickup (recall matters more than precision for play)
-    mpHands.setOptions({ maxNumHands:2, modelComplexity:1, minDetectionConfidence:0.5, minTrackingConfidence:0.4 });
+    mpHands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`});
+    mpHands.setOptions({maxNumHands:2, modelComplexity:1, minDetectionConfidence:0.5, minTrackingConfidence:0.4});
     mpHands.onResults(onResults);
     handsReady=true; setStatus('','准备就绪 — 点击开启摄像头');
-  }catch(err){ console.error(err); setStatus('','模型加载失败'); }
+  }catch(e){ console.error(e); setStatus('','模型加载失败'); }
 }
 
 async function startCamera(){
-  const hint=document.getElementById('hint');
-  hint.style.display='none';
-  // camera needs HTTPS or localhost; file:// reports as secure in Chrome but still fails getUserMedia
-  if(location.protocol==='file:' || !window.isSecureContext){
-    hint.innerHTML='⚠️ 摄像头需要 localhost 或 HTTPS。你正以本地文件方式打开。<br>请在 <b>shadow/</b> 目录运行 <code>python3 -m http.server 8080</code>，然后访问 <b>http://localhost:8080/shadowplay-poc.html</b>';
+  const hint=document.getElementById('hint'); hint.style.display='none';
+  if(location.protocol==='file:'||!window.isSecureContext){
+    hint.innerHTML='⚠️ 需要 localhost 或 HTTPS。运行 <code>python3 -m http.server 8090</code>，访问 <b>http://localhost:8090/shadowplay-poc.html</b>';
     hint.style.display='block'; return;
   }
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({ video:{ width:{ideal:1280}, height:{ideal:720}, facingMode:'user' } });
+    const stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'}});
     video.srcObject=stream; await video.play();
     document.getElementById('startOverlay').style.display='none';
     resize(); window.addEventListener('resize',resize);
-    new Camera(video,{ onFrame:async()=>{ if(handsReady) try{ await mpHands.send({image:video}); }catch(e){} }, width:1280, height:720 }).start();
+    new Camera(video,{onFrame:async()=>{if(handsReady)try{await mpHands.send({image:video});}catch(e){}},width:1280,height:720}).start();
   }catch(e){
-    console.error(e);
     document.getElementById('startBtn').textContent='重试';
-    if(e.name==='NotAllowedError') hint.innerHTML='⚠️ 摄像头权限被拒绝。点击地址栏 🔒 → 网站设置 → 摄像头 → 允许，然后重试。';
-    else if(e.name==='NotFoundError') hint.textContent='⚠️ 未找到摄像头。';
+    if(e.name==='NotAllowedError') hint.innerHTML='⚠️ 摄像头权限被拒绝。点击地址栏 🔒 → 摄像头 → 允许。';
     else hint.textContent='⚠️ '+e.name+': '+e.message;
     hint.style.display='block';
   }
 }
 
-// ─── Render ─────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  Render pipeline
+// ═══════════════════════════════════════════════════════════════
 function onResults(res){
   resize();
   ctx.clearRect(0,0,canvas.width,canvas.height);
   octx.clearRect(0,0,off.width,off.height);
-  const hands=res.multiHandLandmarks;
+  const hands=res.multiHandLandmarks||[];
   const handed=res.multiHandedness||[];
-  if(hands && hands.length){
+
+  if(hands.length){
     setStatus('on',`${hands.length} 只手 — 影子已生成`);
-    const now=(typeof performance!=='undefined')?performance.now():Date.now();
+    const now=performance.now();
     frameScale=1;
-    // 1) paint every hand as a thin opaque-black skeleton on the offscreen.
-    //    Key the smoothing filters by handedness (Left/Right), NOT loop index —
-    //    MediaPipe doesn't keep a stable order across frames for two hands, so an
-    //    index key swaps each hand's filter state → jitter/teleport. (fall back to
-    //    index if handedness is missing.)
     for(let i=0;i<hands.length;i++){
       const key=(handed[i]&&handed[i].label)?handed[i].label:('h'+i);
       paintSilhouette(hands[i],key,now);
     }
-    // 2) blur+threshold into an organic silhouette, then composite as a soft cast shadow
     metaball();
     compositeShadow();
     if(showDebug) for(const h of hands) drawSkeleton(h);
-  }else{
+
+    // Gesture scoring
+    if(currentGesture){
+      if(currentGesture.twoHands){
+        // Both-hand mode: need ≥2 hands AND high all-finger extension
+        if(hands.length>=2){
+          const s0=detectFingers(hands[0]), s1=detectFingers(hands[1]);
+          const ext=[...s0,...s1].filter(Boolean).length;
+          const score=ext/10;
+          updateGestureUI(score,[true,true,true,true,true]);
+        } else {
+          const states=detectFingers(hands[0]);
+          updateGestureUI(scoreGesture(states,currentGesture.required)*0.6, states);
+        }
+      } else {
+        const states=detectFingers(hands[0]);
+        updateGestureUI(scoreGesture(states,currentGesture.required), states);
+      }
+    }
+  } else {
     setStatus('','把手伸到镜头前');
+    if(currentGesture) updateGestureUI(0,[false,false,false,false,false]);
   }
 }
 
-function paintSilhouette(lm,key,now){
+function paintSilhouette(lm, key, now){
   const w=off.width, h=off.height;
   const P=lm.map((p,i)=>({
     x: smooth(key+':'+i+':x', p.x, now)*w,
     y: smooth(key+':'+i+':y', p.y, now)*h,
   }));
-  // hand scale = wrist→middle-finger MCP (≈ palm length, stable) → widths stay
-  // proportional whether the hand is near or far; `thickness` scales it overall.
-  const S = Math.hypot(P[9].x-P[0].x, P[9].y-P[0].y) || 1;
-  frameScale = Math.max(frameScale, S);   // largest hand this frame drives the metaball blur
-  const tw = S * thickness;
+
+  // Hand scale = wrist → middle MCP (palm length), keeps proportions distance-invariant
+  const S=Math.hypot(P[9].x-P[0].x, P[9].y-P[0].y)||1;
+  frameScale=Math.max(frameScale,S);
+  const tw=S*thickness;
+
   octx.save();
   octx.fillStyle='#000'; octx.strokeStyle='#000';
-  octx.lineCap='round'; octx.lineJoin='round';
-  // palm polygon
+  octx.lineCap='round';  octx.lineJoin='round';
+
+  // 1. Filled palm polygon (solid base for the hand body)
   octx.beginPath(); octx.moveTo(P[PALM[0]].x,P[PALM[0]].y);
   for(let i=1;i<PALM.length;i++) octx.lineTo(P[PALM[i]].x,P[PALM[i]].y);
   octx.closePath(); octx.fill();
-  octx.lineWidth = 0.08 * tw; octx.stroke();
-  // finger-base webbing (triangles MCP–MCP–apex) so fingers don't read as separate sticks
-  /*
-  for(const [a,b,pa,pb,fr] of WEBS){
-    const mx=(P[a].x+P[b].x)/2, my=(P[a].y+P[b].y)/2;
-    const px=(P[pa].x+P[pb].x)/2, py=(P[pa].y+P[pb].y)/2;
-    octx.beginPath(); octx.moveTo(P[a].x,P[a].y); octx.lineTo(P[b].x,P[b].y);
-    octx.lineTo(mx+(px-mx)*fr, my+(py-my)*fr); octx.closePath(); octx.fill();
+
+  // 2. Knuckle circles — reinforce key joints so the palm reads as solid flesh
+  for(const [idx,r] of KNUCKLES){
+    octx.beginPath(); octx.arc(P[idx].x,P[idx].y,r*tw,0,Math.PI*2); octx.fill();
   }
-  */
-  // bones (round caps give tapered, ball-free fingertips; the metaball blur smooths joints)
-  for(const [a,b,wd] of BONES){ octx.lineWidth=wd*tw; octx.beginPath(); octx.moveTo(P[a].x,P[a].y); octx.lineTo(P[b].x,P[b].y); octx.stroke(); }
+
+  // 3. Bones (round-capped capsules) — finger shafts
+  for(const [a,b,wd] of BONES){
+    octx.lineWidth=wd*tw;
+    octx.beginPath(); octx.moveTo(P[a].x,P[a].y); octx.lineTo(P[b].x,P[b].y); octx.stroke();
+  }
+
+  // 4. Fingertip caps — ensure round, non-spindly tips
+  for(const [idx,r] of FINGERTIPS){
+    octx.beginPath(); octx.arc(P[idx].x,P[idx].y,r*tw,0,Math.PI*2); octx.fill();
+  }
+
   octx.restore();
 }
 
-// blur the raw skeleton, then hard-threshold its alpha → smooth, webbed, organic silhouette
+// Blur → hard-threshold → organic silhouette (metaball effect)
 function metaball(){
   const w=mb.width, h=mb.height;
   const K=Math.max(1, frameScale*mbBlurFrac);
   mbx.clearRect(0,0,w,h);
   mbx.save(); mbx.filter=`blur(${K}px)`; mbx.drawImage(off,0,0); mbx.restore();
   const img=mbx.getImageData(0,0,w,h), d=img.data;
-  for(let i=3;i<d.length;i+=4) d[i] = d[i]>=mbThresh ? 255 : 0;
+  for(let i=3;i<d.length;i+=4) d[i]=d[i]>=mbThresh?255:0;
   mbx.putImageData(img,0,0);
 }
 
@@ -379,32 +618,33 @@ function compositeShadow(){
   ctx.save();
   ctx.globalAlpha=darkness;
   if(blurPx>0) ctx.filter=`blur(${blurPx}px)`;
-  // scale around center + light-source offset → projected-shadow feel
   const cx=w/2, cy=h/2;
   ctx.translate(cx+lightOff, cy+lightOff*0.7);
-  ctx.scale(shadowSize, shadowSize);
+  ctx.scale(shadowSize,shadowSize);
   ctx.translate(-cx,-cy);
-  ctx.drawImage(mb, 0, 0, w, h);   // upscale half-res silhouette to full canvas
+  ctx.drawImage(mb,0,0,w,h);
   ctx.restore();
 }
 
 function drawSkeleton(lm){
-  const w=canvas.width,h=canvas.height;
-  ctx.save(); ctx.strokeStyle='rgba(180,112,95,0.6)'; ctx.fillStyle='#b5705f'; ctx.lineWidth=1.5;
+  const w=canvas.width, h=canvas.height;
+  ctx.save(); ctx.strokeStyle='rgba(180,112,95,0.65)'; ctx.fillStyle='#b5705f'; ctx.lineWidth=1.5;
   for(const [a,b] of BONES){ ctx.beginPath(); ctx.moveTo(lm[a].x*w,lm[a].y*h); ctx.lineTo(lm[b].x*w,lm[b].y*h); ctx.stroke(); }
-  for(let i=0;i<lm.length;i++){ ctx.beginPath(); ctx.arc(lm[i].x*w,lm[i].y*h,3,0,Math.PI*2); ctx.fill(); }
+  for(let i=0;i<21;i++){ ctx.beginPath(); ctx.arc(lm[i].x*w,lm[i].y*h,3,0,Math.PI*2); ctx.fill(); }
   ctx.restore();
 }
 
-// ─── Controls ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+//  Controls
+// ═══════════════════════════════════════════════════════════════
 document.getElementById('thickR').oninput =e=>thickness=+e.target.value/100;
 document.getElementById('sizeR').oninput  =e=>shadowSize=+e.target.value/100;
 document.getElementById('blurR').oninput  =e=>blurPx=+e.target.value;
 document.getElementById('darkR').oninput  =e=>darkness=+e.target.value/100;
 document.getElementById('offR').oninput   =e=>lightOff=+e.target.value;
 document.getElementById('smoothR').oninput=e=>smoothAmt=+e.target.value/100;
-document.getElementById('camBtn').onclick =e=>{ stage.classList.toggle('show-cam'); e.target.classList.toggle('active'); };
-document.getElementById('dbgBtn').onclick =e=>{ showDebug=!showDebug; e.target.classList.toggle('active'); };
+document.getElementById('camBtn').onclick =e=>{stage.classList.toggle('show-cam');e.target.classList.toggle('active');};
+document.getElementById('dbgBtn').onclick =e=>{showDebug=!showDebug;e.target.classList.toggle('active');};
 document.getElementById('startBtn').onclick=startCamera;
 
 initHands();
