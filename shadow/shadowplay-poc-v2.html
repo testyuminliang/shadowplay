@@ -452,12 +452,12 @@ async function startCamera() {
     document.getElementById('startOverlay').style.display='none';
     resize(); window.addEventListener('resize', resize);
 
+    // Seg-only for now — Hands loads separately every other frame to avoid WASM conflict
+    let fc = 0;
     new Camera(video, {
       onFrame: async () => {
-        await Promise.all([
-          mpSeg.send({ image: video }),
-          mpHands.send({ image: video }),
-        ]);
+        await mpSeg.send({ image: video });
+        if (++fc % 2 === 0) mpHands.send({ image: video }).catch(()=>{});
       },
       width: 1280, height: 720
     }).start();
