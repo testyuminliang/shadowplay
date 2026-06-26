@@ -195,7 +195,7 @@
   <div class="controls">
     <div class="ctrl"><label>手指粗细</label><input type="range" id="thickR" min="80" max="220" value="130"></div>
     <div class="ctrl"><label>影子大小</label><input type="range" id="sizeR"  min="100" max="180" value="118"></div>
-    <div class="ctrl"><label>边缘柔化</label><input type="range" id="blurR"  min="0"   max="20"  value="6"></div>
+    <div class="ctrl"><label>边缘柔化</label><input type="range" id="blurR"  min="0"   max="20"  value="3"></div>
     <div class="ctrl"><label>浓度</label>    <input type="range" id="darkR"  min="40"  max="100" value="86"></div>
     <div class="ctrl"><label>光源偏移</label><input type="range" id="offR"   min="0"   max="60"  value="22"></div>
     <div class="ctrl"><label>平滑</label>    <input type="range" id="smoothR" min="0"  max="100" value="55"></div>
@@ -283,7 +283,7 @@ const GESTURE_DEFS = [
 // ═══════════════════════════════════════════════════════════════
 //  State
 // ═══════════════════════════════════════════════════════════════
-let shadowSize=1.18, blurPx=6, darkness=0.86, lightOff=22, smoothAmt=0.55, thickness=1.30, showDebug=false;
+let shadowSize=1.18, blurPx=3, darkness=0.86, lightOff=22, smoothAmt=0.55, thickness=1.30, showDebug=false;
 let currentGesture=null, matchHoldStart=null;
 const MATCH_THRESH=0.88, MATCH_HOLD_MS=1200;
 const FINGER_LABELS=['拇','食','中','环','小'];
@@ -300,8 +300,8 @@ const mb   = document.createElement('canvas');
 const mbx  = mb.getContext('2d', { willReadFrequently:true });
 
 const MB_SCALE   = 0.5;
-let   mbBlurFrac = 0.048;   // larger → more palm merging, rounder joints
-let   mbThresh   = 112;     // lower  → fuller silhouette
+let   mbBlurFrac = 0.060;   // larger → more palm merging, rounder joints
+let   mbThresh   = 45;      // lower  → fuller silhouette
 let   frameScale = 1;
 
 // Bone definitions: [fromIdx, toIdx, widthFraction of hand scale]
@@ -332,6 +332,28 @@ const KNUCKLES = [
 
 // Fingertip caps: keep tips round and full-looking
 const FINGERTIPS = [[4,0.102],[8,0.095],[12,0.095],[16,0.088],[20,0.082]];
+
+// ═══════════════════════════════════════════════════════════════
+//  Convex hull (Jarvis march) — fills palm as a solid shape
+// ═══════════════════════════════════════════════════════════════
+function convexHull(pts) {
+  if (pts.length < 3) return pts.slice();
+  let l = 0;
+  for (let i = 1; i < pts.length; i++) if (pts[i].x < pts[l].x) l = i;
+  const hull = [], n = pts.length;
+  let cur = l;
+  do {
+    hull.push(pts[cur]);
+    let next = (cur + 1) % n;
+    for (let i = 0; i < n; i++) {
+      const cx = (pts[next].x - pts[cur].x) * (pts[i].y - pts[cur].y)
+               - (pts[next].y - pts[cur].y) * (pts[i].x - pts[cur].x);
+      if (cx < 0) next = i;
+    }
+    cur = next;
+  } while (cur !== l);
+  return hull;
+}
 
 // ═══════════════════════════════════════════════════════════════
 //  One-Euro smoothing (stable, lag-free, from nail POC)
@@ -562,6 +584,9 @@ function onResults(res){
   }
 }
 
+// Palm landmark indices: wrist + thumb base + all MCPs — used for hull fill
+const PALM_HULL_IDX = [0, 1, 2, 5, 9, 13, 17];
+
 function paintSilhouette(lm, key, now){
   const w=off.width, h=off.height;
   const P=lm.map((p,i)=>({
@@ -569,7 +594,6 @@ function paintSilhouette(lm, key, now){
     y: smooth(key+':'+i+':y', p.y, now)*h,
   }));
 
-  // Hand scale = wrist → middle MCP (palm length), keeps proportions distance-invariant
   const S=Math.hypot(P[9].x-P[0].x, P[9].y-P[0].y)||1;
   frameScale=Math.max(frameScale,S);
   const tw=S*thickness;
@@ -578,23 +602,33 @@ function paintSilhouette(lm, key, now){
   octx.fillStyle='#000'; octx.strokeStyle='#000';
   octx.lineCap='round';  octx.lineJoin='round';
 
-  // 1. Filled palm polygon (solid base for the hand body)
-  octx.beginPath(); octx.moveTo(P[PALM[0]].x,P[PALM[0]].y);
-  for(let i=1;i<PALM.length;i++) octx.lineTo(P[PALM[i]].x,P[PALM[i]].y);
+  // 1. Convex hull of palm landmarks → solid filled palm mass
+  //    Expands slightly outward from centroid for gapless coverage
+  const palmPts = PALM_HULL_IDX.map(i => P[i]);
+  const hull = convexHull(palmPts);
+  const hcx = hull.reduce((s,p)=>s+p.x,0)/hull.length;
+  const hcy = hull.reduce((s,p)=>s+p.y,0)/hull.length;
+  octx.beginPath();
+  for(let i=0;i<hull.length;i++){
+    const p = hull[i];
+    const ex = hcx + (p.x - hcx) * 1.12;
+    const ey = hcy + (p.y - hcy) * 1.12;
+    i===0 ? octx.moveTo(ex,ey) : octx.lineTo(ex,ey);
+  }
   octx.closePath(); octx.fill();
 
-  // 2. Knuckle circles — reinforce key joints so the palm reads as solid flesh
+  // 2. Knuckle circles — reinforce joints at palm boundary
   for(const [idx,r] of KNUCKLES){
     octx.beginPath(); octx.arc(P[idx].x,P[idx].y,r*tw,0,Math.PI*2); octx.fill();
   }
 
-  // 3. Bones (round-capped capsules) — finger shafts
+  // 3. Bones (round-capped capsules) — fill each finger shaft
   for(const [a,b,wd] of BONES){
     octx.lineWidth=wd*tw;
     octx.beginPath(); octx.moveTo(P[a].x,P[a].y); octx.lineTo(P[b].x,P[b].y); octx.stroke();
   }
 
-  // 4. Fingertip caps — ensure round, non-spindly tips
+  // 4. Fingertip caps
   for(const [idx,r] of FINGERTIPS){
     octx.beginPath(); octx.arc(P[idx].x,P[idx].y,r*tw,0,Math.PI*2); octx.fill();
   }
@@ -602,15 +636,11 @@ function paintSilhouette(lm, key, now){
   octx.restore();
 }
 
-// Blur → hard-threshold → organic silhouette (metaball effect)
+// Direct copy — no metaball blur/threshold; edge softening is in compositeShadow via blurPx
 function metaball(){
   const w=mb.width, h=mb.height;
-  const K=Math.max(1, frameScale*mbBlurFrac);
   mbx.clearRect(0,0,w,h);
-  mbx.save(); mbx.filter=`blur(${K}px)`; mbx.drawImage(off,0,0); mbx.restore();
-  const img=mbx.getImageData(0,0,w,h), d=img.data;
-  for(let i=3;i<d.length;i+=4) d[i]=d[i]>=mbThresh?255:0;
-  mbx.putImageData(img,0,0);
+  mbx.drawImage(off,0,0);
 }
 
 function compositeShadow(){
