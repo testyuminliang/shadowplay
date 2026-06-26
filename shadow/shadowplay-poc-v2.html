@@ -209,50 +209,49 @@ function renderFrame() {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  if (!latestSegMask || latestHands.length === 0) {
+  // Only need seg mask — show shadow even before hands model warms up
+  if (!latestSegMask) {
     setStatus('', '把手伸到镜头前');
     return;
   }
 
-  setStatus('on', `${latestHands.length} 只手 — 影子已生成`);
+  setStatus(latestHands.length > 0 ? 'on' : '', latestHands.length > 0 ? `${latestHands.length} 只手 — 影子已生成` : '把手伸到镜头前');
 
   const ow = offCanvas.width, oh = offCanvas.height;
 
-  // 1. Draw segmentation mask (grayscale: white=person, black=background)
+  // 1. Draw segmentation mask — MediaPipe uses ALPHA channel (not RGB) for person mask
   offCtx.clearRect(0, 0, ow, oh);
   offCtx.drawImage(latestSegMask, 0, 0, ow, oh);
 
-  // 2. Convert grayscale luminance → alpha, fill black
-  const imgData = offCtx.getImageData(0, 0, ow, oh);
-  const d = imgData.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const lum = d[i]; // R channel = person probability (0=bg, 255=person)
-    d[i] = 0; d[i+1] = 0; d[i+2] = 0;
-    d[i+3] = lum;
-  }
-  offCtx.putImageData(imgData, 0, 0);
-
-  // 3. Crop silhouette to hand bounding box (exclude torso/background bleed)
-  let minX=1, minY=1, maxX=0, maxY=0;
-  for (const hand of latestHands) {
-    for (const pt of hand) {
-      if (pt.x < minX) minX=pt.x; if (pt.x > maxX) maxX=pt.x;
-      if (pt.y < minY) minY=pt.y; if (pt.y > maxY) maxY=pt.y;
-    }
-  }
-  const p = handPad;
-  const rx = Math.max(0, minX - p) * ow;
-  const ry = Math.max(0, minY - p) * oh;
-  const rw = (Math.min(1, maxX + p) - Math.max(0, minX - p)) * ow;
-  const rh = (Math.min(1, maxY + p) - Math.max(0, minY - p)) * oh;
-
-  regionCtx.clearRect(0, 0, ow, oh);
-  regionCtx.fillStyle = '#fff';
-  regionCtx.fillRect(rx, ry, rw, rh);
-
-  offCtx.globalCompositeOperation = 'destination-in';
-  offCtx.drawImage(regionCanvas, 0, 0);
+  // 2. Fill person area (alpha > 0) with solid black via source-in compositing
+  offCtx.globalCompositeOperation = 'source-in';
+  offCtx.fillStyle = '#000';
+  offCtx.fillRect(0, 0, ow, oh);
   offCtx.globalCompositeOperation = 'source-over';
+
+  // 3. Crop to hand bounding box (only when hands detected — avoids showing torso)
+  if (latestHands.length > 0) {
+    let minX=1, minY=1, maxX=0, maxY=0;
+    for (const hand of latestHands) {
+      for (const pt of hand) {
+        if (pt.x < minX) minX=pt.x; if (pt.x > maxX) maxX=pt.x;
+        if (pt.y < minY) minY=pt.y; if (pt.y > maxY) maxY=pt.y;
+      }
+    }
+    const p = handPad;
+    const rx = Math.max(0, minX - p) * ow;
+    const ry = Math.max(0, minY - p) * oh;
+    const rw = (Math.min(1, maxX + p) - Math.max(0, minX - p)) * ow;
+    const rh = (Math.min(1, maxY + p) - Math.max(0, minY - p)) * oh;
+
+    regionCtx.clearRect(0, 0, ow, oh);
+    regionCtx.fillStyle = '#fff';
+    regionCtx.fillRect(rx, ry, rw, rh);
+
+    offCtx.globalCompositeOperation = 'destination-in';
+    offCtx.drawImage(regionCanvas, 0, 0);
+    offCtx.globalCompositeOperation = 'source-over';
+  }
 
   // 4. Composite shadow: offset (light angle) + blur (shadow edge) + scale
   ctx.save();
