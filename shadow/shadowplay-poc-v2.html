@@ -412,8 +412,12 @@ let mpSeg, mpHands;
 function initModels() {
   setStatus('loading', '加载分割模型…');
 
+  // selfie_segmentation@0.1 shares the Hands WASM runtime,
+  // so hands_solution_* files must be served from the hands CDN
   mpSeg = new SelfieSegmentation({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${f}`
+    locateFile: f => f.startsWith('hands_solution')
+      ? `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`
+      : `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${f}`
   });
   mpSeg.setOptions({ modelSelection: 1, selfieMode: true });
   mpSeg.onResults(res => {
