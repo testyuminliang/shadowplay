@@ -409,25 +409,25 @@ function updateGestureUI(score, states) {
 let segReady=false, handsReady=false;
 let mpSeg, mpHands;
 
+// Both models share the same WASM runtime — must use one unified locateFile.
+// selfie_segmentation_* files → seg CDN; everything else → hands CDN.
+function unifiedLocateFile(f) {
+  return f.startsWith('selfie_segmentation')
+    ? `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${f}`
+    : `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`;
+}
+
 function initModels() {
   setStatus('loading', '加载分割模型…');
 
-  // selfie_segmentation@0.1 shares the Hands WASM runtime,
-  // so hands_solution_* files must be served from the hands CDN
-  mpSeg = new SelfieSegmentation({
-    locateFile: f => f.startsWith('hands_solution')
-      ? `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`
-      : `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${f}`
-  });
+  mpSeg = new SelfieSegmentation({ locateFile: unifiedLocateFile });
   mpSeg.setOptions({ modelSelection: 1, selfieMode: true });
   mpSeg.onResults(res => {
     latestSegMask = res.segmentationMask;
     renderFrame();
   });
 
-  mpHands = new Hands({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`
-  });
+  mpHands = new Hands({ locateFile: unifiedLocateFile });
   mpHands.setOptions({ maxNumHands:2, modelComplexity:1, minDetectionConfidence:0.5, minTrackingConfidence:0.4 });
   mpHands.onResults(res => {
     latestHands = res.multiHandLandmarks || [];
