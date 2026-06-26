@@ -191,6 +191,12 @@ let latestSegMask  = null;
 let latestHands    = [];
 let latestHandedness = [];
 
+// Cached hand bbox — persists for BBOX_TTL ms after last detection
+// so crop doesn't flicker when Hands model misses a frame
+let cachedBBox = null;
+let cachedBBoxTs = 0;
+const BBOX_TTL = 400;
+
 // ═══════════════════════════════════════════════════════════════
 //  Resize
 // ═══════════════════════════════════════════════════════════════
@@ -209,49 +215,42 @@ function renderFrame() {
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  // Only need seg mask — show shadow even before hands model warms up
-  if (!latestSegMask) {
-    setStatus('', '把手伸到镜头前');
-    return;
-  }
+  if (!latestSegMask) { setStatus('', '把手伸到镜头前'); return; }
 
-  setStatus(latestHands.length > 0 ? 'on' : '', latestHands.length > 0 ? `${latestHands.length} 只手 — 影子已生成` : '把手伸到镜头前');
+  // Use cached bbox — stays valid for BBOX_TTL ms after last hand detection
+  const bbox = (performance.now() - cachedBBoxTs < BBOX_TTL) ? cachedBBox : null;
+
+  if (!bbox) { setStatus('', '把手伸到镜头前'); return; }
+
+  setStatus('on', `${latestHands.length || '?'} 只手 — 影子已生成`);
 
   const ow = offCanvas.width, oh = offCanvas.height;
 
-  // 1. Draw segmentation mask — MediaPipe uses ALPHA channel (not RGB) for person mask
+  // 1. Draw segmentation mask — alpha channel = person probability
   offCtx.clearRect(0, 0, ow, oh);
   offCtx.drawImage(latestSegMask, 0, 0, ow, oh);
 
-  // 2. Fill person area (alpha > 0) with solid black via source-in compositing
+  // 2. Fill person area with solid black (source-in reads alpha channel)
   offCtx.globalCompositeOperation = 'source-in';
   offCtx.fillStyle = '#000';
   offCtx.fillRect(0, 0, ow, oh);
   offCtx.globalCompositeOperation = 'source-over';
 
-  // 3. Crop to hand bounding box (only when hands detected — avoids showing torso)
-  if (latestHands.length > 0) {
-    let minX=1, minY=1, maxX=0, maxY=0;
-    for (const hand of latestHands) {
-      for (const pt of hand) {
-        if (pt.x < minX) minX=pt.x; if (pt.x > maxX) maxX=pt.x;
-        if (pt.y < minY) minY=pt.y; if (pt.y > maxY) maxY=pt.y;
-      }
-    }
-    const p = handPad;
-    const rx = Math.max(0, minX - p) * ow;
-    const ry = Math.max(0, minY - p) * oh;
-    const rw = (Math.min(1, maxX + p) - Math.max(0, minX - p)) * ow;
-    const rh = (Math.min(1, maxY + p) - Math.max(0, minY - p)) * oh;
+  // 3. Crop to cached hand bbox so only the hand casts a shadow (not the torso)
+  const { minX, minY, maxX, maxY } = bbox;
+  const p = handPad;
+  const rx = Math.max(0, minX - p) * ow;
+  const ry = Math.max(0, minY - p) * oh;
+  const rw = (Math.min(1, maxX + p) - Math.max(0, minX - p)) * ow;
+  const rh = (Math.min(1, maxY + p) - Math.max(0, minY - p)) * oh;
 
-    regionCtx.clearRect(0, 0, ow, oh);
-    regionCtx.fillStyle = '#fff';
-    regionCtx.fillRect(rx, ry, rw, rh);
+  regionCtx.clearRect(0, 0, ow, oh);
+  regionCtx.fillStyle = '#fff';
+  regionCtx.fillRect(rx, ry, rw, rh);
 
-    offCtx.globalCompositeOperation = 'destination-in';
-    offCtx.drawImage(regionCanvas, 0, 0);
-    offCtx.globalCompositeOperation = 'source-over';
-  }
+  offCtx.globalCompositeOperation = 'destination-in';
+  offCtx.drawImage(regionCanvas, 0, 0);
+  offCtx.globalCompositeOperation = 'source-over';
 
   // 4. Composite shadow: offset (light angle) + blur (shadow edge) + scale
   ctx.save();
@@ -309,6 +308,18 @@ function scoreGesture(states, required) {
 }
 
 function updateGestureFromHands() {
+  // Cache bounding box of all detected hands
+  if (latestHands.length > 0) {
+    let minX=1, minY=1, maxX=0, maxY=0;
+    for (const hand of latestHands) {
+      for (const pt of hand) {
+        if (pt.x < minX) minX=pt.x; if (pt.x > maxX) maxX=pt.x;
+        if (pt.y < minY) minY=pt.y; if (pt.y > maxY) maxY=pt.y;
+      }
+    }
+    cachedBBox = { minX, minY, maxX, maxY };
+    cachedBBoxTs = performance.now();
+  }
   if (!currentGesture) return;
   if (latestHands.length === 0) { updateGestureUI(0,[false,false,false,false,false]); return; }
   if (currentGesture.twoHands) {
@@ -452,12 +463,10 @@ async function startCamera() {
     document.getElementById('startOverlay').style.display='none';
     resize(); window.addEventListener('resize', resize);
 
-    // Seg-only for now — Hands loads separately every other frame to avoid WASM conflict
-    let fc = 0;
     new Camera(video, {
       onFrame: async () => {
         await mpSeg.send({ image: video });
-        if (++fc % 2 === 0) mpHands.send({ image: video }).catch(()=>{});
+        mpHands.send({ image: video }).catch(() => {});
       },
       width: 1280, height: 720
     }).start();
