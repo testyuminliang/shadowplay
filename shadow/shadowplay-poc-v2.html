@@ -147,7 +147,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/selfie_segmentation.js" crossorigin="anonymous"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════
 //  Gesture definitions (same as v1)
@@ -413,7 +413,7 @@ function initModels() {
   setStatus('loading', '加载分割模型…');
 
   mpSeg = new SelfieSegmentation({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}`
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${f}`
   });
   mpSeg.setOptions({ modelSelection: 1, selfieMode: true });
   mpSeg.onResults(res => {
