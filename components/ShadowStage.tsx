@@ -22,6 +22,32 @@ declare global {
   }
 }
 
+const BACKGROUNDS = ['/背景1.png', '/背景2.png', '/背景3.png', '/背景4.png'];
+
+// Tortoise static position per background (null = not shown).
+// left/bottom/width are CSS percentage strings.
+const TORTOISE_POS: (React.CSSProperties | null)[] = [
+  { left: '6%',  bottom: '24%', width: '18%' }, // bg1 — race start (far behind)
+  null,                                           // bg2 — sleep scene
+  { left: '32%', bottom: '24%', width: '20%' }, // bg3 — tortoise mid-path
+  { left: '58%', bottom: '24%', width: '20%' }, // bg4 — finish, tortoise wins
+];
+
+// Rabbit config per background.
+// fixedLeft = undefined  →  hand controls horizontal position
+// fixedLeft = string     →  static position (e.g. sleeping)
+type RabbitCfg = { src: string; bottom: string; width: string; fixedLeft?: string };
+const RABBIT_CFG: (RabbitCfg | null)[] = [
+  { src: '/兔子奔跑-removebg-preview.png', bottom: '24%', width: '26%' },               // bg1: hand-controlled
+  { src: '/兔子睡觉-removebg-preview.png', bottom: '22%', width: '22%', fixedLeft: '38%' }, // bg2: static sleep
+  null,                                                                                    // bg3: no rabbit
+  { src: '/兔子奔跑-removebg-preview.png', bottom: '24%', width: '24%', fixedLeft: '32%' }, // bg4: static finish
+];
+
+// Horizontal range the rabbit can move across (as % of screen width).
+const RABBIT_LEFT_MIN = 5;
+const RABBIT_LEFT_MAX = 72;
+
 const SCRIPT_URLS = [
   'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js',
   'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js',
@@ -248,11 +274,17 @@ export default function ShadowStage() {
   const mergedRef = useRef<HTMLCanvasElement | null>(null);
   const filterRef = useRef<Map<string, OneEuro>>(new Map());
   const tuningRef = useRef<ShadowTuning>(DEFAULT_TUNING);
+  const rabbitRef = useRef<HTMLImageElement>(null);
+  const bgIndexRef = useRef(0);
   const [status, setStatus] = useState('加载模型中...');
   const [state, setState] = useState<'loading' | 'idle' | 'ready'>('loading');
   const [started, setStarted] = useState(false);
   const [error, setError] = useState('');
   const [tuning, setTuning] = useState<ShadowTuning>(DEFAULT_TUNING);
+  const [bgIndex, setBgIndex] = useState(0);
+
+  // Keep bgIndexRef in sync so renderShadow (a stable callback) can read it.
+  useEffect(() => { bgIndexRef.current = bgIndex; }, [bgIndex]);
 
   const updateTuning = useCallback((key: keyof ShadowTuning, value: number) => {
     setTuning((current) => {
@@ -363,6 +395,19 @@ export default function ShadowStage() {
 
     setStatus(`${hands.length} 只手 - 影子已生成`);
     setState('ready');
+
+    // Drive rabbit position from wrist X on hand-controlled backgrounds.
+    const rabbitCfg = RABBIT_CFG[bgIndexRef.current];
+    if (rabbitCfg && !rabbitCfg.fixedLeft && rabbitRef.current) {
+      // MediaPipe X is in original (unmirrored) camera space; mirror it to match
+      // the canvas's scaleX(-1) so the rabbit follows the visible shadow.
+      const rawX = 1 - hands[0][0].x;
+      let filter = filterRef.current.get('rabbit:x');
+      if (!filter) { filter = new OneEuro(); filterRef.current.set('rabbit:x', filter); }
+      const smoothX = filter.filter(rawX, now);
+      const leftPct = RABBIT_LEFT_MIN + smoothX * (RABBIT_LEFT_MAX - RABBIT_LEFT_MIN);
+      rabbitRef.current.style.left = `${leftPct.toFixed(2)}%`;
+    }
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -412,6 +457,27 @@ export default function ShadowStage() {
 
   return (
     <main className="stage">
+      <img src={BACKGROUNDS[bgIndex]} className="stage-bg" alt="" />
+
+      {/* Tortoise — static NPC */}
+      {TORTOISE_POS[bgIndex] && (
+        <img src="/乌龟奔跑-removebg-preview.png" className="stage-sprite" style={TORTOISE_POS[bgIndex]!} alt="" />
+      )}
+
+      {/* Rabbit — hand-controlled left on bg1, static elsewhere */}
+      {RABBIT_CFG[bgIndex] && (
+        <img
+          ref={rabbitRef}
+          src={RABBIT_CFG[bgIndex]!.src}
+          className="stage-sprite"
+          style={{
+            bottom: RABBIT_CFG[bgIndex]!.bottom,
+            width:  RABBIT_CFG[bgIndex]!.width,
+            left:   RABBIT_CFG[bgIndex]!.fixedLeft ?? '40%',
+          }}
+          alt=""
+        />
+      )}
       <video ref={videoRef} className="camera" autoPlay playsInline muted />
       <canvas ref={canvasRef} className="shadow-canvas" />
       <header className="topbar">
@@ -422,6 +488,13 @@ export default function ShadowStage() {
           <span className="status-dot" />
           <span>{status}</span>
         </div>
+        <button
+          className="bg-next-btn"
+          onClick={() => setBgIndex((i) => (i + 1) % BACKGROUNDS.length)}
+          title="Switch background"
+        >
+          {bgIndex + 1} / {BACKGROUNDS.length} &nbsp;›
+        </button>
       </header>
 
       {!started && (
