@@ -22,6 +22,47 @@ declare global {
   }
 }
 
+type Locale = 'en' | 'zh';
+type StatusKey = 'loading' | 'ready' | 'modelFailed' | 'showHand' | 'shadowReady';
+type ErrorKey = 'modelLoadFailed' | 'insecureContext' | 'cameraFailed';
+
+const COPY = {
+  en: {
+    status: {
+      loading: 'Loading model...',
+      ready: 'Ready',
+      modelFailed: 'Model failed to load',
+      showHand: 'Show your hand to the camera',
+      shadowReady: (count: number) => `${count} hand${count === 1 ? '' : 's'} - shadow ready`,
+    },
+    error: {
+      modelLoadFailed: 'MediaPipe failed to load. Check your network and refresh.',
+      insecureContext: 'Camera access requires localhost or HTTPS. Open the app with npm run dev.',
+      cameraFailed: 'Camera failed to start',
+    },
+    startCopy: 'Turn on the camera and cast your hand shadow onto the wall. This build keeps the core tracking stage ready for gameplay.',
+    startButton: 'Start Camera',
+    switchLanguage: 'Switch language',
+  },
+  zh: {
+    status: {
+      loading: '加载模型中...',
+      ready: '准备就绪',
+      modelFailed: '模型加载失败',
+      showHand: '把手伸到镜头前',
+      shadowReady: (count: number) => `${count} 只手 - 影子已生成`,
+    },
+    error: {
+      modelLoadFailed: 'MediaPipe 加载失败，请检查网络后刷新。',
+      insecureContext: '摄像头需要 localhost 或 HTTPS。请使用 npm run dev 打开本地页面。',
+      cameraFailed: '摄像头启动失败',
+    },
+    startCopy: '打开摄像头，把手影投到墙面上。这里先保留最核心的识别和呈现框架。',
+    startButton: '开启摄像头',
+    switchLanguage: '切换语言',
+  },
+} as const;
+
 const SCRIPT_URLS = [
   'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js',
   'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js',
@@ -247,20 +288,17 @@ export default function ShadowStage() {
   const maskRef = useRef<HTMLCanvasElement | null>(null);
   const mergedRef = useRef<HTMLCanvasElement | null>(null);
   const filterRef = useRef<Map<string, OneEuro>>(new Map());
-  const tuningRef = useRef<ShadowTuning>(DEFAULT_TUNING);
-  const [status, setStatus] = useState('加载模型中...');
+  const [locale, setLocale] = useState<Locale>('en');
+  const [statusKey, setStatusKey] = useState<StatusKey>('loading');
+  const [handCount, setHandCount] = useState(0);
   const [state, setState] = useState<'loading' | 'idle' | 'ready'>('loading');
   const [started, setStarted] = useState(false);
-  const [error, setError] = useState('');
-  const [tuning, setTuning] = useState<ShadowTuning>(DEFAULT_TUNING);
-
-  const updateTuning = useCallback((key: keyof ShadowTuning, value: number) => {
-    setTuning((current) => {
-      const next = { ...current, [key]: value };
-      tuningRef.current = next;
-      return next;
-    });
-  }, []);
+  const [errorKey, setErrorKey] = useState<ErrorKey | null>(null);
+  const [errorDetail, setErrorDetail] = useState('');
+  const copy = COPY[locale];
+  const status =
+    statusKey === 'shadowReady' ? copy.status.shadowReady(handCount) : copy.status[statusKey];
+  const error = errorKey ? (errorDetail || copy.error[errorKey]) : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -270,13 +308,13 @@ export default function ShadowStage() {
         await SCRIPT_URLS.reduce((chain, src) => chain.then(() => loadScript(src)), Promise.resolve());
         if (!cancelled) {
           setState('idle');
-          setStatus('准备就绪');
+          setStatusKey('ready');
         }
       } catch {
         if (!cancelled) {
           setState('idle');
-          setStatus('模型加载失败');
-          setError('MediaPipe 加载失败，请检查网络后刷新。');
+          setStatusKey('modelFailed');
+          setErrorKey('modelLoadFailed');
         }
       }
     }
@@ -323,14 +361,14 @@ export default function ShadowStage() {
     const handedness = result.multiHandedness ?? [];
 
     if (!hands.length) {
-      setStatus('把手伸到镜头前');
+      setStatusKey('showHand');
       setState('idle');
       return;
     }
 
     let scale = 1;
     const now = performance.now();
-    const tuningNow = tuningRef.current;
+    const tuningNow = DEFAULT_TUNING;
     for (let index = 0; index < hands.length; index += 1) {
       const key = handedness[index]?.label ?? `hand-${index}`;
       scale = Math.max(
@@ -361,17 +399,19 @@ export default function ShadowStage() {
     ctx.drawImage(merged, 0, 0, width, height);
     ctx.restore();
 
-    setStatus(`${hands.length} 只手 - 影子已生成`);
+    setHandCount(hands.length);
+    setStatusKey('shadowReady');
     setState('ready');
   }, []);
 
   const startCamera = useCallback(async () => {
     const video = videoRef.current;
     if (!video || !window.Hands || !window.Camera) return;
-    setError('');
+    setErrorKey(null);
+    setErrorDetail('');
 
     if (location.protocol === 'file:' || !window.isSecureContext) {
-      setError('摄像头需要 localhost 或 HTTPS。请使用 npm run dev 打开本地页面。');
+      setErrorKey('insecureContext');
       return;
     }
 
@@ -402,13 +442,18 @@ export default function ShadowStage() {
       });
       camera.start();
       setStarted(true);
-      setStatus('把手伸到镜头前');
+      setStatusKey('showHand');
       setState('idle');
     } catch (err) {
-      const message = err instanceof Error ? err.message : '摄像头启动失败';
-      setError(message);
+      const message = err instanceof Error ? err.message : '';
+      setErrorKey('cameraFailed');
+      setErrorDetail(message);
     }
   }, [renderShadow]);
+
+  const toggleLocale = useCallback(() => {
+    setLocale((current) => (current === 'en' ? 'zh' : 'en'));
+  }, []);
 
   return (
     <main className="stage">
@@ -418,9 +463,26 @@ export default function ShadowStage() {
         <div className="brand">
           Shadow <span>Play</span>
         </div>
-        <div className="status" data-state={state}>
-          <span className="status-dot" />
-          <span>{status}</span>
+        <div className="top-actions">
+          <button
+            className="language-button"
+            type="button"
+            aria-label={copy.switchLanguage}
+            title={copy.switchLanguage}
+            onClick={toggleLocale}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="globe-icon">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18" />
+              <path d="M12 3c2.5 2.4 3.8 5.4 3.8 9s-1.3 6.6-3.8 9" />
+              <path d="M12 3c-2.5 2.4-3.8 5.4-3.8 9s1.3 6.6 3.8 9" />
+            </svg>
+            <span>{locale === 'en' ? 'EN' : '中文'}</span>
+          </button>
+          <div className="status" data-state={state}>
+            <span className="status-dot" />
+            <span>{status}</span>
+          </div>
         </div>
       </header>
 
@@ -428,97 +490,15 @@ export default function ShadowStage() {
         <div className="start">
           <section className="start-panel">
             <h1 className="start-title">ShadowPlay</h1>
-            <p className="start-copy">打开摄像头，把手影投到墙面上。这里先保留最核心的识别和呈现框架。</p>
+            <p className="start-copy">{copy.startCopy}</p>
             <button className="start-button" disabled={state === 'loading'} onClick={startCamera}>
-              开启摄像头
+              {copy.startButton}
             </button>
             <p className="error">{error}</p>
           </section>
         </div>
       )}
 
-      {started && (
-        <section className="tuning-panel" aria-label="手影参数">
-          <TuneSlider
-            label="手指粗细"
-            value={tuning.thickness}
-            min={0.65}
-            max={1.35}
-            step={0.01}
-            display={tuning.thickness.toFixed(2)}
-            onChange={(value) => updateTuning('thickness', value)}
-          />
-          <TuneSlider
-            label="指尖大小"
-            value={tuning.tipScale}
-            min={0}
-            max={1.8}
-            step={0.01}
-            display={tuning.tipScale.toFixed(2)}
-            onChange={(value) => updateTuning('tipScale', value)}
-          />
-          <TuneSlider
-            label="融合阈值"
-            value={tuning.mergeThreshold}
-            min={40}
-            max={130}
-            step={1}
-            display={String(tuning.mergeThreshold)}
-            onChange={(value) => updateTuning('mergeThreshold', value)}
-          />
-          <TuneSlider
-            label="融合强度"
-            value={tuning.mergeBlur}
-            min={0.015}
-            max={0.075}
-            step={0.001}
-            display={tuning.mergeBlur.toFixed(3)}
-            onChange={(value) => updateTuning('mergeBlur', value)}
-          />
-          <TuneSlider
-            label="边缘柔化"
-            value={tuning.edgeBlur}
-            min={0}
-            max={8}
-            step={0.1}
-            display={tuning.edgeBlur.toFixed(1)}
-            onChange={(value) => updateTuning('edgeBlur', value)}
-          />
-        </section>
-      )}
     </main>
-  );
-}
-
-function TuneSlider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  display,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  display: string;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="tune">
-      <span className="tune-label">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <span className="tune-value">{display}</span>
-    </label>
   );
 }

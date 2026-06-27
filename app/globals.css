@@ -96,6 +96,45 @@ button {
   color: var(--accent);
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.language-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 7px 11px;
+  border: 1px solid rgba(120, 92, 84, 0.1);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  background: var(--paper);
+  box-shadow: 0 2px 12px rgba(60, 40, 40, 0.08);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.language-button:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.globe-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .status {
   display: inline-flex;
   align-items: center;
@@ -183,54 +222,23 @@ button {
   line-height: 1.5;
 }
 
-.tuning-panel {
-  position: absolute;
-  z-index: 6;
-  left: 50%;
-  bottom: 18px;
-  display: flex;
-  max-width: calc(100vw - 28px);
-  gap: 14px;
-  align-items: center;
-  padding: 10px 14px;
-  border: 1px solid rgba(120, 92, 84, 0.14);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 8px 28px rgba(60, 40, 40, 0.12);
-  backdrop-filter: blur(12px);
-  transform: translateX(-50%);
-  overflow-x: auto;
-}
+@media (max-width: 640px) {
+  .topbar {
+    gap: 12px;
+    padding: 14px;
+  }
 
-.tune {
-  display: grid;
-  grid-template-columns: max-content 112px 42px;
-  gap: 8px;
-  align-items: center;
-  flex: 0 0 auto;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
+  .top-actions {
+    justify-content: flex-end;
+  }
 
-.tune-label {
-  color: var(--ink);
-  font-weight: 650;
-}
+  .status {
+    max-width: 48vw;
+  }
 
-.tune-value {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.tune input {
-  width: 112px;
-  accent-color: var(--accent);
-}
-
-@media (max-width: 720px) {
-  .tuning-panel {
-    left: 12px;
-    right: 12px;
-    transform: none;
+  .status span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
