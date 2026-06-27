@@ -1,4 +1,3 @@
-# 构建上下文里排除不需要进镜像的东西（迁到 Next.js 后可按需增减）
 node_modules
 .next
 .git
@@ -6,5 +5,5 @@ node_modules
 *.log
 .DS_Store
 
-# 当前验证套件不属于 Next.js 运行时镜像
+shadow/*.html
 verify

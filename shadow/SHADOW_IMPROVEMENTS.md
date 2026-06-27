@@ -150,10 +150,10 @@ score = (匹配手指数) / 5
 ## 四、本地运行
 
 ```bash
-cd shadow
-python3 -m http.server 8090
-# 浏览器打开 http://localhost:8090/shadowplay-poc.html
-# 点击"开启摄像头" → 选择动物 → 做手势
+npm install
+npm run dev
+# 浏览器打开 http://localhost:3000
+# 点击"开启摄像头"
 ```
 
 ---

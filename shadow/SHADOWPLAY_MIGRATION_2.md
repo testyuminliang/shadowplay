@@ -129,8 +129,8 @@ Hackathon 当天用 MediaPipe Selfie Segmentation，完全够用。
 
 | 步骤 | 状态 |
 |------|------|
-| v1 骨骼关键点方案 | ✅ 已跑通（`shadowplay-poc.html`） |
-| v2 分割方案 POC | ✅ 已接入实验模式（`shadowplay-poc-v2.html` 的「像素影子」开关） |
-| 两者并行（分割画影 + landmarks 判手势） | ✅ 已集成：Selfie Segmentation 画影子，Hands 保留手势判断和手部 bbox |
+| v1 骨骼关键点方案 | ✅ 已迁入 Next.js（`components/ShadowStage.tsx`） |
+| v2 分割方案 POC | ⏸️ 暂停作为主线：Selfie Segmentation 分的是人体，不是手，实际效果不稳定 |
+| 两者并行（分割画影 + landmarks 判手势） | ⏸️ 保留为后续实验方向，当前主线回到 Hands + Canvas 手影框架 |
 
-当前实现采用 hackathon 优先的稳定策略：分割 mask 新鲜且可用时使用像素影子；分割模型未加载、推理报错或 mask 过期时自动回退到骨架影子。
+当前实现采用 hackathon 优先的稳定策略：先保留可靠的实时手影呈现框架，后续再替换成更适合手部分割的模型。

@@ -1,0 +1,79 @@
+name: 部署到 Cloud Run
+
+# ══════════════════════════════════════════════════════════════════════════
+#  ShadowPlay → Cloud Run 部署流程
+#
+#  当前项目已经迁到 Next.js，并使用仓库根目录的 Dockerfile 构建 standalone 镜像。
+#  这个 workflow 支持：
+#    - 手动触发：Actions 页面点击 Run workflow
+#    - main 分支 push 后自动部署
+#
+#  GitHub 侧需要配置：
+#    Repository variables:
+#      GCP_PROJECT_ID      GCP 项目 ID
+#      CLOUD_RUN_SERVICE   Cloud Run 服务名，默认 shadowplay
+#      CLOUD_RUN_REGION    部署地区，默认 asia-northeast1
+#
+#    Repository secrets:
+#      WIF_PROVIDER        Workload Identity Federation provider 资源名
+#      GCP_DEPLOY_SA       部署用 Service Account 邮箱
+#
+#  GCP 侧需要准备：
+#    - 启用 Cloud Run / Cloud Build / Artifact Registry API
+#    - 部署 SA 至少具备：
+#        roles/run.admin
+#        roles/cloudbuild.builds.editor
+#        roles/artifactregistry.writer
+#        roles/iam.serviceAccountUser
+#        roles/storage.admin
+# ══════════════════════════════════════════════════════════════════════════
+
+on:
+  workflow_dispatch: {}        # 手动触发
+  push:
+    branches: [main]           # main 分支更新后自动部署
+
+# 同一时间只保留一个部署，新提交会取消旧部署
+concurrency:
+  group: deploy-cloudrun
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write              # Workload Identity Federation 需要 OIDC token
+
+# ── 部署参数：优先读 GitHub Variables，没有配置时使用默认值 ───────────────
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'REPLACE_ME_PROJECT_ID' }}
+  SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE || 'shadowplay' }}
+  REGION: ${{ vars.CLOUD_RUN_REGION || 'asia-northeast1' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 认证到 Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: 安装 Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # 使用 source deploy：Cloud Build 会读取仓库根 Dockerfile 构建镜像并部署。
+      - name: 部署 ShadowPlay 到 Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          source: .
+          flags: --allow-unauthenticated
+
+      - name: 输出服务 URL
+        run: echo "已部署到 ${{ steps.deploy.outputs.url }}"

@@ -10,7 +10,7 @@
 
 | 步骤 | 状态 | 说明 |
 |------|------|------|
-| **① 手势 → 影子渲染** | ✅ 已验证 | `shadow/shadowplay-poc.html`：摄像头 → MediaPipe Hands → 骨骼胶囊剪影 → 暖色"墙壁"投影。已用合成 landmarks 注入 `onResults()` 跑通整条渲染链路（截图见 `verify/shadow-proof.png`，剪影 ~10.8 万像素、覆盖 11.8%、手形 bbox 652×530）。 |
+| **① 手势 → 影子渲染** | ✅ 已迁入 Next.js | `components/ShadowStage.tsx`：摄像头 → MediaPipe Hands → Canvas 手影剪影 → 暖色"墙壁"投影。 |
 | ② Gemini 生成故事 + 交互定义 | ⬜ 待做 | `/api/generate-story` |
 | ③ Imagen 场景插图 | ⬜ 待做 | `/api/generate-image` |
 | ④ 手势验证（learn_gesture） | ⬜ 待做 | landmarks/截图 → Gemini |
@@ -19,26 +19,18 @@
 
 ### ① 已实现要点（与文档原方案的差异）
 
-- **单文件 POC**：`shadow/shadowplay-poc.html`，零构建，采用稳定的 `@mediapipe/hands@0.4` script 标签 + `Camera` + One-Euro 平滑方案。
+- **Next.js 主入口**：`app/page.tsx` 渲染 `components/ShadowStage.tsx`，采用稳定的 `@mediapipe/hands@0.4` script 标签 + `Camera` 方案。
 - **剪影合成改进**：文档原 `drawBoneShadow` 直接画半透明胶囊，关节重叠处会更黑、有接缝。改为先在**离屏 canvas 用纯黑不透明**画骨骼胶囊 + 手掌多边形 + 关节圆，再整体一次性 `ctx.filter=blur()` + `globalAlpha` 合成到主画布 → 统一柔边剪影，无接缝。
 - **"墙壁"质感**：CSS 暖色径向渐变 + SVG 噪点纸纹；摄像头画面默认隐藏（可一键显示用于调试），所以呈现的是"真实投影"观感而非原始视频。
-- **投影感**：剪影按 `影子大小` 放大、按 `光源偏移` 平移，模拟光源角度。控制条可实时调：影子大小 / 边缘柔化 / 浓度 / 光源偏移 / 平滑。
-- **支持双手**（`maxNumHands:2`），蝴蝶等双手手势可用。
+- **投影感**：剪影放大、平移、柔化，模拟光源角度。
+- **支持双手**（`maxNumHands:2`），为后续游戏内容保留基础能力。
 
 ### 本地运行
 
 ```bash
-cd shadow
-python3 -m http.server 8090
-# 打开 http://localhost:8090/shadowplay-poc.html → 点击"开启摄像头"
-```
-
-### 自动验证（无需真实摄像头）
-
-```bash
-cd verify
-npm install          # 安装 puppeteer-core
-node shadow.js       # 注入合成手部 landmarks，读回画布像素 + 截图 shadow-proof.png
+npm install
+npm run dev
+# 打开 http://localhost:3000 → 点击"开启摄像头"
 ```
 
 ---
