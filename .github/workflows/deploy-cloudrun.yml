@@ -40,10 +40,11 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write              # Workload Identity Federation 需要 OIDC token
 
 # ── 部署参数：优先读 GitHub Variables，没有配置时使用默认值 ───────────────
 env:
-  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'project-35f45bb4-34ae-49d7-81c' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'REPLACE_ME_PROJECT_ID' }}
   SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE || 'shadowplay' }}
   REGION: ${{ vars.CLOUD_RUN_REGION || 'asia-northeast1' }}
 
@@ -57,7 +58,8 @@ jobs:
       - name: 认证到 Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GA_SA_KEY }}
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
 
       - name: 安装 Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
