@@ -42,7 +42,6 @@ const COPY = {
     },
     startCopy: 'Turn on the camera and cast your hand shadow onto the wall. This build keeps the core tracking stage ready for gameplay.',
     startButton: 'Start Camera',
-    languageName: 'English',
     switchLanguage: 'Switch language',
   },
   zh: {
@@ -60,7 +59,6 @@ const COPY = {
     },
     startCopy: '打开摄像头，把手影投到墙面上。这里先保留最核心的识别和呈现框架。',
     startButton: '开启摄像头',
-    languageName: '简体中文',
     switchLanguage: '切换语言',
   },
 } as const;
