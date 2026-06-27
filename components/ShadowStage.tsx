@@ -337,21 +337,21 @@ export default function ShadowStage() {
 
   const resetRace = useCallback(() => {
     const currentStep = stepRef.current;
-    
+
     if (currentStep === 2) {
       rabbitXRef.current = 10;
       tortoiseXRef.current = 5;
     } else if (currentStep === 3) {
-      rabbitXRef.current = 60;
-      tortoiseXRef.current = 48;
+      rabbitXRef.current = 90;
+      tortoiseXRef.current = 70;
       rabbitAsleepRef.current = false;
       setRabbitAsleep(false);
     } else if (currentStep === 4) {
-      rabbitXRef.current = 60;
-      tortoiseXRef.current = 60;
-    } else if (currentStep === 5) {
-      rabbitXRef.current = 60;
+      rabbitXRef.current = 90;
       tortoiseXRef.current = 90;
+    } else if (currentStep === 5) {
+      rabbitXRef.current = 90;
+      tortoiseXRef.current = 95;
     }
 
     setShowWarning(false);
@@ -383,16 +383,16 @@ export default function ShadowStage() {
       rabbitXRef.current = 10;
       tortoiseXRef.current = 5;
     } else if (newStep === 3) {
-      rabbitXRef.current = 60;
-      tortoiseXRef.current = 48;
+      rabbitXRef.current = 90;
+      tortoiseXRef.current = 70;
       rabbitAsleepRef.current = false;
       setRabbitAsleep(false);
     } else if (newStep === 4) {
-      rabbitXRef.current = 60;
-      tortoiseXRef.current = 60;
-    } else if (newStep === 5) {
-      rabbitXRef.current = 60;
+      rabbitXRef.current = 90;
       tortoiseXRef.current = 90;
+    } else if (newStep === 5) {
+      rabbitXRef.current = 90;
+      tortoiseXRef.current = 95;
     }
 
     setTimeout(() => {
@@ -616,7 +616,7 @@ export default function ShadowStage() {
       else if (currentStep === 2) {
         setShowWarning(!isMatching && track.hasHand);
 
-        if (rabbitXRef.current < 60) {
+        if (rabbitXRef.current < 90) {
           const tortoiseSpeed = 3.5;
           const rabbitSpeed = 4.2;
 
@@ -624,7 +624,8 @@ export default function ShadowStage() {
             if (track.hasHand && track.centroid) {
               const rawX = 1 - track.centroid.x;
               const normalizedX = Math.max(0, Math.min(1, (rawX - 0.2) / 0.6));
-              const targetX = 10 + normalizedX * 50;
+              // Target overshoots to 96% so the lerp can cross the 90% threshold
+              const targetX = 10 + normalizedX * 86;
               rabbitXRef.current = rabbitXRef.current + (targetX - rabbitXRef.current) * 0.12;
             }
             const nextTortoiseX = tortoiseXRef.current + tortoiseSpeed * dt;
@@ -657,26 +658,28 @@ export default function ShadowStage() {
             if (label) label.textContent = `Tortoise ${tx}%`;
           }
 
-          // Auto-Transition to Step 3 when Rabbit reaches 60%
-          if (rabbitXRef.current >= 60) {
+          // Auto-Transition to Step 3 when Rabbit reaches the far right (90%)
+          // Rabbit reaches finish first — no need to wait for tortoise
+          if (rabbitXRef.current >= 90) {
             setStep(3);
             stepRef.current = 3;
-            rabbitXRef.current = 60; // Locked at 60%
-            tortoiseXRef.current = 48; // Capped at 48% (60 - 12)
+            rabbitXRef.current = 90;
+            // Tortoise stays wherever it is (already capped at rabbit-12 by race logic)
             matchDurationRef.current = 0;
             rabbitAsleepRef.current = false;
             setRabbitAsleep(false);
 
             setTimeout(() => {
               if (rabbitRef.current) {
-                rabbitRef.current.style.left = '60%';
+                rabbitRef.current.style.left = '90%';
                 const label = rabbitRef.current.querySelector('.runner-label');
-                if (label) label.textContent = `Rabbit 60% (Asleep)`;
+                if (label) label.textContent = `Rabbit 90% (Asleep)`;
               }
               if (tortoiseRef.current) {
-                tortoiseRef.current.style.left = '48%';
+                const tx2 = Math.round(tortoiseXRef.current);
+                tortoiseRef.current.style.left = `${tx2}%`;
                 const label = tortoiseRef.current.querySelector('.runner-label');
-                if (label) label.textContent = `Tortoise 48%`;
+                if (label) label.textContent = `Tortoise ${tx2}%`;
               }
             }, 0);
           }
@@ -709,25 +712,25 @@ export default function ShadowStage() {
 
           // If asleep, Tortoise crawls forward automatically
           if (rabbitAsleepRef.current) {
-            const tortoiseSpeed = 2.5;
-            tortoiseXRef.current = Math.min(60, tortoiseXRef.current + tortoiseSpeed * dt);
+            const tortoiseSpeed = 8;
+            tortoiseXRef.current = Math.min(90, tortoiseXRef.current + tortoiseSpeed * dt);
           }
         } else {
-          // Tortoise Role: Rabbit sleeps automatically. User controls Tortoise crawls X from 48% to 60%
+          // Tortoise Role: Rabbit sleeps automatically. User controls Tortoise crawls X to 90%
           rabbitAsleepRef.current = true;
           if (track.hasHand && track.centroid) {
             const rawX = 1 - track.centroid.x;
             const normalizedX = Math.max(0, Math.min(1, (rawX - 0.2) / 0.6));
-            const targetX = 48 + normalizedX * 14; 
+            const targetX = 70 + normalizedX * 20;
             tortoiseXRef.current = tortoiseXRef.current + (targetX - tortoiseXRef.current) * 0.12;
           }
         }
 
         // Direct DOM updates for runners positions
         if (rabbitRef.current) {
-          rabbitRef.current.style.left = '60%';
+          rabbitRef.current.style.left = '90%';
           const label = rabbitRef.current.querySelector('.runner-label');
-          if (label) label.textContent = `Rabbit 60% (Asleep)`;
+          if (label) label.textContent = `Rabbit 90% (Asleep)`;
         }
         if (tortoiseRef.current) {
           const tx = Math.round(tortoiseXRef.current);
@@ -736,38 +739,38 @@ export default function ShadowStage() {
           if (label) label.textContent = `Tortoise ${tx}%`;
         }
 
-        // Auto-Transition to Step 4 when tortoise passes rabbit
-        if (tortoiseXRef.current >= 60) {
+        // Auto-Transition to Step 4 when tortoise catches up to rabbit (90%)
+        if (tortoiseXRef.current >= 90) {
           setStep(4);
           stepRef.current = 4;
-          tortoiseXRef.current = 60;
+          tortoiseXRef.current = 90;
           setTimeout(() => {
-            if (rabbitRef.current) rabbitRef.current.style.left = '60%';
-            if (tortoiseRef.current) tortoiseRef.current.style.left = '60%';
+            if (rabbitRef.current) rabbitRef.current.style.left = '90%';
+            if (tortoiseRef.current) tortoiseRef.current.style.left = '90%';
           }, 0);
         }
       } 
       
       else if (currentStep === 4) {
         if (currentRole === 'rabbit') {
-          // AI Tortoise advances automatically from 60% to 90%
+          // AI Tortoise advances automatically from 90% to 95% (actual finish)
           const tortoiseSpeed = 3.0;
-          tortoiseXRef.current = Math.min(90, tortoiseXRef.current + tortoiseSpeed * dt);
+          tortoiseXRef.current = Math.min(95, tortoiseXRef.current + tortoiseSpeed * dt);
         } else {
-          // Tortoise Role: User controls Tortoise crawl from 60% to 90%
+          // Tortoise Role: User controls Tortoise crawl from 90% to 95%
           if (track.hasHand && track.centroid) {
             const rawX = 1 - track.centroid.x;
             const normalizedX = Math.max(0, Math.min(1, (rawX - 0.2) / 0.6));
-            const targetX = 60 + normalizedX * 30; 
+            const targetX = 90 + normalizedX * 5;
             tortoiseXRef.current = tortoiseXRef.current + (targetX - tortoiseXRef.current) * 0.12;
           }
         }
 
         // Direct DOM updates for runners positions
         if (rabbitRef.current) {
-          rabbitRef.current.style.left = '60%';
+          rabbitRef.current.style.left = '90%';
           const label = rabbitRef.current.querySelector('.runner-label');
-          if (label) label.textContent = `Rabbit 60% (Asleep)`;
+          if (label) label.textContent = `Rabbit 90% (Asleep)`;
         }
         if (tortoiseRef.current) {
           const tx = Math.round(tortoiseXRef.current);
@@ -776,16 +779,16 @@ export default function ShadowStage() {
           if (label) label.textContent = `Tortoise ${tx}%`;
         }
 
-        // Auto-Transition to Step 5 when Tortoise reaches 90%
-        if (tortoiseXRef.current >= 90) {
+        // Auto-Transition to Step 5 when Tortoise reaches actual finish (95%)
+        if (tortoiseXRef.current >= 95) {
           setStep(5);
           stepRef.current = 5;
           setTimeout(() => {
-            if (rabbitRef.current) rabbitRef.current.style.left = '60%';
+            if (rabbitRef.current) rabbitRef.current.style.left = '90%';
             if (tortoiseRef.current) {
-              tortoiseRef.current.style.left = '90%';
+              tortoiseRef.current.style.left = '95%';
               const label = tortoiseRef.current.querySelector('.runner-label');
-              if (label) label.textContent = `Tortoise 90%`;
+              if (label) label.textContent = `Tortoise 95%`;
             }
           }, 0);
         }
@@ -928,7 +931,7 @@ export default function ShadowStage() {
                   ? (rabbitAsleep 
                       ? 'Rabbit has fallen asleep! The Tortoise is catching up automatically...' 
                       : 'Make a fist gesture ✊ to rest under the tree.') 
-                  : 'Rabbit is asleep at 60%. Control Tortoise to catch up!'}
+                  : 'Rabbit is asleep at 90%. Control Tortoise to catch up!'}
               </p>
               
               {playerRole === 'rabbit' && !rabbitAsleep && (
@@ -1014,11 +1017,11 @@ export default function ShadowStage() {
               {step === 3 && (playerRole === 'rabbit' ? 'Rabbit is deciding to sleep' : 'Tortoise is catching up')}
               {step === 4 && (playerRole === 'rabbit' ? 'Tortoise is advancing steadily' : 'Crawl Tortoise to finish')}
             </span>
-            <span className="finish-label">Goal: {step === 4 ? '90%' : '60%'}</span>
+            <span className="finish-label">Goal: {step === 4 ? 'Finish' : '90%'}</span>
           </div>
           <div className="racetrack">
             <div className="track-line" />
-            <div className="finish-line" style={{ right: step === 4 ? '10%' : '40%' }} />
+            <div className="finish-line" style={{ right: step === 4 ? '5%' : '10%' }} />
             
             <div ref={rabbitRef} className="runner" style={{ left: '10%' }}>
               <span className="runner-avatar">🐰</span>
