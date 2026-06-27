@@ -59,6 +59,26 @@ button {
   pointer-events: none;
 }
 
+.runner-sprite {
+  position: absolute;
+  bottom: 22%;
+  transform: translateX(-50%);
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 10px 14px rgba(40, 28, 24, 0.28));
+  will-change: left;
+}
+
+.rabbit-sprite {
+  width: min(28vw, 300px);
+}
+
+.tortoise-sprite {
+  bottom: 21%;
+  width: min(22vw, 230px);
+}
+
 .bg-next-btn {
   padding: 7px 16px;
   border: 0;
@@ -92,6 +112,21 @@ button {
   height: 100%;
   object-fit: cover;
   transform: scaleX(-1);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.hand-cursor {
+  position: absolute;
+  z-index: 12;
+  display: none;
+  width: 34px;
+  height: 34px;
+  border: 3px solid rgba(181, 111, 95, 0.9);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 0 8px rgba(181, 111, 95, 0.18);
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
@@ -296,8 +331,8 @@ button {
   background: var(--paper);
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: 24px;
-  padding: 32px 24px;
-  width: 320px;
+  padding: 28px 32px 32px;
+  width: min(640px, calc(100vw - 40px));
   text-align: center;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(16px);
@@ -305,6 +340,19 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+}
+
+.tutorial-overlay {
+  z-index: 11;
+}
+
+.gesture-guide-image {
+  width: min(220px, 54vw);
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.46);
+  box-shadow: 0 10px 24px rgba(43, 36, 35, 0.1);
 }
 
 .guide-emoji {
@@ -322,9 +370,41 @@ button {
 
 .guide-desc {
   margin: 0;
+  max-width: 34em;
   font-size: 13px;
   color: var(--ink-soft);
   line-height: 1.5;
+}
+
+.guide-hint {
+  margin: 4px 0 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.start-story-button {
+  margin-top: 8px;
+  min-width: 210px;
+  min-height: 58px;
+  padding: 14px 28px;
+  border: 0;
+  border-radius: 12px;
+  color: white;
+  background: var(--accent);
+  box-shadow: 0 10px 24px rgba(181, 111, 95, 0.28);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.start-story-button:hover,
+.start-story-button.is-touched {
+  background: #9e5f52;
+  box-shadow: 0 12px 30px rgba(181, 111, 95, 0.38);
+  transform: translateY(-1px) scale(1.03);
 }
 
 /* Progress bar inside matching text */
@@ -421,6 +501,13 @@ button {
 
 .runner-avatar {
   font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+
+.runner-avatar-img {
+  width: 38px;
+  height: 28px;
+  object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
 }
 
