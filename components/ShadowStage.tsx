@@ -187,11 +187,11 @@ export default function ShadowStage() {
   const [playerRole, setPlayerRole] = useState<'rabbit' | 'tortoise'>('rabbit');
   const [hasHand, setHasHand] = useState(false);
 
-  // Racetrack discrete status
-  const [raceFinished, setRaceFinished] = useState(false);
+  // Story action triggers
+  const [rabbitAsleep, setRabbitAsleep] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
 
-  // DOM element Refs for high-performance direct styling updates (bypassing 60fps React state reconciliations)
+  // DOM element Refs for high-performance direct styling updates (bypassing React 60fps re-renders)
   const rabbitRef = useRef<HTMLDivElement>(null);
   const tortoiseRef = useRef<HTMLDivElement>(null);
   const progressFillRef = useRef<HTMLDivElement>(null);
@@ -203,6 +203,8 @@ export default function ShadowStage() {
   const rabbitXRef = useRef(10);
   const tortoiseXRef = useRef(5);
   const matchDurationRef = useRef(0); // in ms
+  const rabbitAsleepRef = useRef(false);
+
   const trackingRef = useRef<{
     hasHand: boolean;
     fingerState: [boolean, boolean, boolean, boolean, boolean];
@@ -249,22 +251,38 @@ export default function ShadowStage() {
   }, []);
 
   const resetRace = useCallback(() => {
-    rabbitXRef.current = 10;
-    tortoiseXRef.current = 5;
-    setRaceFinished(false);
+    const currentStep = stepRef.current;
+    
+    if (currentStep === 2) {
+      rabbitXRef.current = 10;
+      tortoiseXRef.current = 5;
+    } else if (currentStep === 3) {
+      rabbitXRef.current = 60;
+      tortoiseXRef.current = 48;
+      rabbitAsleepRef.current = false;
+      setRabbitAsleep(false);
+    } else if (currentStep === 4) {
+      rabbitXRef.current = 60;
+      tortoiseXRef.current = 60;
+    } else if (currentStep === 5) {
+      rabbitXRef.current = 60;
+      tortoiseXRef.current = 90;
+    }
+
     setShowWarning(false);
 
-    // Allow React to mount Step 2 DOM tree before setting style values
+    // Allow React to mount step nodes before directly updating style left parameters
     setTimeout(() => {
       if (rabbitRef.current) {
-        rabbitRef.current.style.left = '10%';
+        rabbitRef.current.style.left = `${rabbitXRef.current}%`;
         const label = rabbitRef.current.querySelector('.runner-label');
-        if (label) label.textContent = 'Rabbit 10%';
+        const isAsleep = currentStep >= 3;
+        if (label) label.textContent = `Rabbit ${rabbitXRef.current}%${isAsleep ? ' (Asleep)' : ''}`;
       }
       if (tortoiseRef.current) {
-        tortoiseRef.current.style.left = '5%';
+        tortoiseRef.current.style.left = `${tortoiseXRef.current}%`;
         const label = tortoiseRef.current.querySelector('.runner-label');
-        if (label) label.textContent = 'Tortoise 5%';
+        if (label) label.textContent = `Tortoise ${tortoiseXRef.current}%`;
       }
     }, 0);
   }, []);
@@ -272,12 +290,49 @@ export default function ShadowStage() {
   const handleStepChange = useCallback((newStep: number) => {
     setStep(newStep);
     matchDurationRef.current = 0;
-    if (newStep === 2) {
-      resetRace();
+    
+    if (newStep === 1) {
+      rabbitXRef.current = 10;
+      tortoiseXRef.current = 5;
+    } else if (newStep === 2) {
+      rabbitXRef.current = 10;
+      tortoiseXRef.current = 5;
+    } else if (newStep === 3) {
+      rabbitXRef.current = 60;
+      tortoiseXRef.current = 48;
+      rabbitAsleepRef.current = false;
+      setRabbitAsleep(false);
+    } else if (newStep === 4) {
+      rabbitXRef.current = 60;
+      tortoiseXRef.current = 60;
+    } else if (newStep === 5) {
+      rabbitXRef.current = 60;
+      tortoiseXRef.current = 90;
     }
-  }, [resetRace]);
 
-  // MediaPipe hands processing callback
+    setTimeout(() => {
+      if (newStep === 1) {
+        if (progressFillRef.current) progressFillRef.current.style.width = '0%';
+        if (progressTextRef.current) progressTextRef.current.textContent = 'Pose hold: 0%';
+      } else if (newStep >= 2) {
+        if (rabbitRef.current) {
+          const rx = rabbitXRef.current;
+          rabbitRef.current.style.left = `${rx}%`;
+          const label = rabbitRef.current.querySelector('.runner-label');
+          const isAsleep = newStep >= 3;
+          if (label) label.textContent = `Rabbit ${rx}%${isAsleep ? ' (Asleep)' : ''}`;
+        }
+        if (tortoiseRef.current) {
+          const tx = tortoiseXRef.current;
+          tortoiseRef.current.style.left = `${tx}%`;
+          const label = tortoiseRef.current.querySelector('.runner-label');
+          if (label) label.textContent = `Tortoise ${tx}%`;
+        }
+      }
+    }, 0);
+  }, []);
+
+  // MediaPipe hands results callback
   const renderShadow = useCallback((result: HandsResult) => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -322,15 +377,13 @@ export default function ShadowStage() {
     }
 
     const hand = hands[0];
-    const centroid = hand[9]; // MCP joint as center point
+    const centroid = hand[9]; // MCP joint center
 
-    // Lenient finger stretch check (y coordinate is 0 at top)
     const indexExt  = hand[8].y  < hand[6].y  - 0.01;
     const middleExt = hand[12].y < hand[10].y - 0.01;
     const ringExt   = hand[16].y < hand[14].y - 0.01;
     const pinkyExt  = hand[20].y < hand[18].y - 0.01;
     
-    // Thumb check (rough estimate using MCP distances)
     const palmCx = hand[9];
     const thumbExt = dist(hand[4], palmCx) > dist(hand[3], palmCx) * 1.04;
 
@@ -417,7 +470,7 @@ export default function ShadowStage() {
     }
   }, [renderShadow]);
 
-  // Game Logic Loop (handles timer holding, position tracking and capping logic)
+  // Main Logic Game Loop
   useEffect(() => {
     let animId: number;
     let lastTime = performance.now();
@@ -430,47 +483,47 @@ export default function ShadowStage() {
       const currentStep = stepRef.current;
       const currentRole = playerRoleRef.current;
 
-      // Lenient gesture criteria checks
+      // Lenient finger status matches
+      const [_, indexExt, middleExt, ringExt, pinkyExt] = track.fingerState;
       let isMatching = false;
       if (track.hasHand) {
-        const [_, indexExt, middleExt, ringExt, pinkyExt] = track.fingerState;
         if (currentRole === 'rabbit') {
-          // Rabbit: Index & Middle UP, Ring & Pinky DOWN. Ignore thumb.
+          // Rabbit matching (Index & Middle UP, Ring & Pinky curled)
           isMatching = indexExt && middleExt && !ringExt && !pinkyExt;
         } else {
-          // Tortoise: All 4 main fingers UP. Ignore thumb.
+          // Tortoise matching (Index, Middle, Ring, Pinky UP)
           isMatching = indexExt && middleExt && ringExt && pinkyExt;
         }
       }
 
       if (currentStep === 1) {
         if (track.hasHand && isMatching) {
-          // Hold time requirement: 800ms
           matchDurationRef.current = Math.min(800, matchDurationRef.current + dt * 1000);
           if (matchDurationRef.current >= 800) {
+            // Auto-Transition to Step 2
             setStep(2);
             stepRef.current = 2;
             rabbitXRef.current = 10;
             tortoiseXRef.current = 5;
-            setRaceFinished(false);
             matchDurationRef.current = 0;
+            setTimeout(() => {
+              if (rabbitRef.current) rabbitRef.current.style.left = '10%';
+              if (tortoiseRef.current) tortoiseRef.current.style.left = '5%';
+            }, 0);
           }
         } else {
           matchDurationRef.current = Math.max(0, matchDurationRef.current - dt * 1000);
         }
         
-        // Direct DOM update for holding progress
         const progressPercent = Math.min(100, Math.round((matchDurationRef.current / 800) * 100));
-        if (progressFillRef.current) {
-          progressFillRef.current.style.width = `${progressPercent}%`;
-        }
-        if (progressTextRef.current) {
-          progressTextRef.current.textContent = `Pose hold: ${progressPercent}%`;
-        }
-      } else if (currentStep === 2) {
+        if (progressFillRef.current) progressFillRef.current.style.width = `${progressPercent}%`;
+        if (progressTextRef.current) progressTextRef.current.textContent = `Pose hold: ${progressPercent}%`;
+      } 
+      
+      else if (currentStep === 2) {
         setShowWarning(!isMatching && track.hasHand);
 
-        if (rabbitXRef.current < 90 && tortoiseXRef.current < 90) {
+        if (rabbitXRef.current < 60) {
           const tortoiseSpeed = 3.5;
           const rabbitSpeed = 4.2;
 
@@ -478,13 +531,14 @@ export default function ShadowStage() {
             if (track.hasHand && track.centroid) {
               const rawX = 1 - track.centroid.x;
               const normalizedX = Math.max(0, Math.min(1, (rawX - 0.2) / 0.6));
-              const targetX = 10 + normalizedX * 80;
+              const targetX = 10 + normalizedX * 50;
               rabbitXRef.current = rabbitXRef.current + (targetX - rabbitXRef.current) * 0.12;
             }
             const nextTortoiseX = tortoiseXRef.current + tortoiseSpeed * dt;
             const maxAllowedTortoiseX = Math.max(5, rabbitXRef.current - 12);
             tortoiseXRef.current = Math.min(nextTortoiseX, maxAllowedTortoiseX);
           } else {
+            // Tortoise Role
             if (track.hasHand && track.centroid) {
               const rawX = 1 - track.centroid.x;
               const normalizedX = Math.max(0, Math.min(1, (rawX - 0.2) / 0.6));
@@ -496,23 +550,151 @@ export default function ShadowStage() {
             rabbitXRef.current = Math.min(90, rabbitXRef.current + rabbitSpeed * dt);
           }
 
-          if (rabbitXRef.current >= 90) {
-            setRaceFinished(true);
+          // Direct DOM style updates for runners X positions
+          const rx = Math.round(rabbitXRef.current);
+          const tx = Math.round(tortoiseXRef.current);
+          if (rabbitRef.current) {
+            rabbitRef.current.style.left = `${rx}%`;
+            const label = rabbitRef.current.querySelector('.runner-label');
+            if (label) label.textContent = `Rabbit ${rx}%`;
+          }
+          if (tortoiseRef.current) {
+            tortoiseRef.current.style.left = `${tx}%`;
+            const label = tortoiseRef.current.querySelector('.runner-label');
+            if (label) label.textContent = `Tortoise ${tx}%`;
+          }
+
+          // Auto-Transition to Step 3 when Rabbit reaches 60%
+          if (rabbitXRef.current >= 60) {
+            setStep(3);
+            stepRef.current = 3;
+            rabbitXRef.current = 60; // Locked at 60%
+            tortoiseXRef.current = 48; // Capped at 48% (60 - 12)
+            matchDurationRef.current = 0;
+            rabbitAsleepRef.current = false;
+            setRabbitAsleep(false);
+
+            setTimeout(() => {
+              if (rabbitRef.current) {
+                rabbitRef.current.style.left = '60%';
+                const label = rabbitRef.current.querySelector('.runner-label');
+                if (label) label.textContent = `Rabbit 60% (Asleep)`;
+              }
+              if (tortoiseRef.current) {
+                tortoiseRef.current.style.left = '48%';
+                const label = tortoiseRef.current.querySelector('.runner-label');
+                if (label) label.textContent = `Tortoise 48%`;
+              }
+            }, 0);
+          }
+        }
+      } 
+      
+      else if (currentStep === 3) {
+        if (currentRole === 'rabbit') {
+          // Sleeping gesture match check: fist ✊ (all main fingers folded)
+          const isFist = track.hasHand && !indexExt && !middleExt && !ringExt && !pinkyExt;
+          setShowWarning(!isFist && track.hasHand);
+
+          if (track.hasHand && isFist) {
+            matchDurationRef.current = Math.min(800, matchDurationRef.current + dt * 1000);
+            if (matchDurationRef.current >= 800 && !rabbitAsleepRef.current) {
+              rabbitAsleepRef.current = true;
+              setRabbitAsleep(true);
+              matchDurationRef.current = 0;
+            }
+          } else {
+            if (!rabbitAsleepRef.current) {
+              matchDurationRef.current = Math.max(0, matchDurationRef.current - dt * 1000);
+            }
+          }
+
+          // Update Progress DOM elements directly
+          const progressPercent = Math.min(100, Math.round((matchDurationRef.current / 800) * 100));
+          if (progressFillRef.current) progressFillRef.current.style.width = `${progressPercent}%`;
+          if (progressTextRef.current) progressTextRef.current.textContent = `Sleeping pose hold: ${progressPercent}%`;
+
+          // If asleep, Tortoise crawls forward automatically
+          if (rabbitAsleepRef.current) {
+            const tortoiseSpeed = 2.5;
+            tortoiseXRef.current = Math.min(60, tortoiseXRef.current + tortoiseSpeed * dt);
+          }
+        } else {
+          // Tortoise Role: Rabbit sleeps automatically. User controls Tortoise crawls X from 48% to 60%
+          rabbitAsleepRef.current = true;
+          if (track.hasHand && track.centroid) {
+            const rawX = 1 - track.centroid.x;
+            const normalizedX = Math.max(0, Math.min(1, (rawX - 0.2) / 0.6));
+            const targetX = 48 + normalizedX * 14; 
+            tortoiseXRef.current = tortoiseXRef.current + (targetX - tortoiseXRef.current) * 0.12;
           }
         }
 
         // Direct DOM updates for runners positions
-        const rx = Math.round(rabbitXRef.current);
-        const tx = Math.round(tortoiseXRef.current);
         if (rabbitRef.current) {
-          rabbitRef.current.style.left = `${rx}%`;
+          rabbitRef.current.style.left = '60%';
           const label = rabbitRef.current.querySelector('.runner-label');
-          if (label) label.textContent = `Rabbit ${rx}%`;
+          if (label) label.textContent = `Rabbit 60% (Asleep)`;
         }
         if (tortoiseRef.current) {
+          const tx = Math.round(tortoiseXRef.current);
           tortoiseRef.current.style.left = `${tx}%`;
           const label = tortoiseRef.current.querySelector('.runner-label');
           if (label) label.textContent = `Tortoise ${tx}%`;
+        }
+
+        // Auto-Transition to Step 4 when tortoise passes rabbit
+        if (tortoiseXRef.current >= 60) {
+          setStep(4);
+          stepRef.current = 4;
+          tortoiseXRef.current = 60;
+          setTimeout(() => {
+            if (rabbitRef.current) rabbitRef.current.style.left = '60%';
+            if (tortoiseRef.current) tortoiseRef.current.style.left = '60%';
+          }, 0);
+        }
+      } 
+      
+      else if (currentStep === 4) {
+        if (currentRole === 'rabbit') {
+          // AI Tortoise advances automatically from 60% to 90%
+          const tortoiseSpeed = 3.0;
+          tortoiseXRef.current = Math.min(90, tortoiseXRef.current + tortoiseSpeed * dt);
+        } else {
+          // Tortoise Role: User controls Tortoise crawl from 60% to 90%
+          if (track.hasHand && track.centroid) {
+            const rawX = 1 - track.centroid.x;
+            const normalizedX = Math.max(0, Math.min(1, (rawX - 0.2) / 0.6));
+            const targetX = 60 + normalizedX * 30; 
+            tortoiseXRef.current = tortoiseXRef.current + (targetX - tortoiseXRef.current) * 0.12;
+          }
+        }
+
+        // Direct DOM updates for runners positions
+        if (rabbitRef.current) {
+          rabbitRef.current.style.left = '60%';
+          const label = rabbitRef.current.querySelector('.runner-label');
+          if (label) label.textContent = `Rabbit 60% (Asleep)`;
+        }
+        if (tortoiseRef.current) {
+          const tx = Math.round(tortoiseXRef.current);
+          tortoiseRef.current.style.left = `${tx}%`;
+          const label = tortoiseRef.current.querySelector('.runner-label');
+          if (label) label.textContent = `Tortoise ${tx}%`;
+        }
+
+        // Auto-Transition to Step 5 when Tortoise reaches 90%
+        if (tortoiseXRef.current >= 90) {
+          setStep(5);
+          stepRef.current = 5;
+          setTimeout(() => {
+            if (rabbitRef.current) rabbitRef.current.style.left = '60%';
+            if (tortoiseRef.current) {
+              tortoiseRef.current.style.left = '90%';
+              const label = tortoiseRef.current.querySelector('.runner-label');
+              if (label) label.textContent = `Tortoise 90%`;
+            }
+          }, 0);
         }
       }
 
@@ -572,10 +754,33 @@ export default function ShadowStage() {
         </div>
       )}
 
+      {/* Step 3 Target Sleeping Pose Guidance Overlay */}
+      {started && step === 3 && playerRole === 'rabbit' && !rabbitAsleep && (
+        <div className={`guide-overlay ${hasHand ? 'hidden' : ''}`}>
+          <div className="guide-card">
+            <div className="guide-emoji">✊</div>
+            <h3 className="guide-title">Rabbit Nap Guide</h3>
+            <p className="guide-desc">
+              Make a fist ✊ (curl all 4 fingers) to decide to sleep under the tree.
+            </p>
+            <p style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 'bold', margin: '4px 0 0 0' }}>
+              Bring your hand to the camera to see your shadow and trigger the nap.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Warning Toast (Step 2 Pose Loss warning) */}
       {started && step === 2 && showWarning && (
         <div className="warning-toast">
           ⚠️ Pose lost! Maintain {playerRole === 'rabbit' ? 'Rabbit 🐰' : 'Tortoise 🐢'} gesture shape
+        </div>
+      )}
+
+      {/* Warning Toast (Step 3 Fist Loss warning) */}
+      {started && step === 3 && playerRole === 'rabbit' && !rabbitAsleep && showWarning && (
+        <div className="warning-toast">
+          ⚠️ Pose lost! Make a fist ✊ to fall asleep
         </div>
       )}
 
@@ -621,30 +826,61 @@ export default function ShadowStage() {
             </div>
           )}
 
-          {/* Finish prompt for Step 2 */}
-          {step === 2 && raceFinished && (
-            <div style={{ background: '#e1efe3', color: '#2e5e34', padding: '8px', borderRadius: '6px', fontSize: '11px', textAlign: 'center' }}>
-              🏁 Reach 90%! Click Next to trigger nap
+          {/* Step 3 matching status */}
+          {step === 3 && (
+            <div>
+              <div className="section-title">3. Decision to Sleep Page</div>
+              <p style={{ fontSize: '12px', margin: '0 0 10px 0', color: 'var(--ink)', lineHeight: '1.4' }}>
+                {playerRole === 'rabbit' 
+                  ? (rabbitAsleep 
+                      ? 'Rabbit has fallen asleep! The Tortoise is catching up automatically...' 
+                      : 'Make a fist gesture ✊ to rest under the tree.') 
+                  : 'Rabbit is asleep at 60%. Control Tortoise to catch up!'}
+              </p>
+              
+              {playerRole === 'rabbit' && !rabbitAsleep && (
+                <div className="match-status-bar">
+                  <span ref={progressTextRef} style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                    Sleeping pose hold: 0%
+                  </span>
+                  <div className="progress-bar-bg">
+                    <div ref={progressFillRef} className="progress-bar-fill" style={{ width: '0%' }} />
+                  </div>
+                </div>
+              )}
+              
+              {rabbitAsleep && (
+                <p style={{ fontSize: '11px', color: '#4a8c54', fontWeight: 'bold', margin: 0 }}>
+                  🐰 Rabbit is napping. 🐢 Tortoise is crawling...
+                </p>
+              )}
             </div>
           )}
 
-          {/* Placeholders for subsequent steps */}
-          {step === 3 && (
-            <div style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>
-              <strong>Step 3: Nap Decision.</strong> Rabbit rests under a tree.
-              <div style={{ textAlign: 'center', fontSize: '24px', margin: '6px 0' }}>🐰💤</div>
-            </div>
-          )}
+          {/* Step 4 details */}
           {step === 4 && (
-            <div style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>
-              <strong>Step 4: Tortoise Walk.</strong> Tortoise creeps past sleeping Rabbit.
-              <div style={{ textAlign: 'center', fontSize: '24px', margin: '6px 0' }}>🐢💨</div>
+            <div>
+              <div className="section-title">4. Tortoise Steady Walk</div>
+              <p style={{ fontSize: '12px', margin: '0 0 10px 0', color: 'var(--ink)', lineHeight: '1.4' }}>
+                {playerRole === 'rabbit' 
+                  ? 'Rabbit is asleep. The Tortoise crawls past and heads to the finish line!'
+                  : 'Rabbit is asleep. Move hand left/right to crawl Tortoise to the finish line.'}
+              </p>
+              <div style={{ textAlign: 'center', fontSize: '24px', margin: '8px 0' }}>🐢💨 ... 🐰💤</div>
             </div>
           )}
+
+          {/* Step 5 details */}
           {step === 5 && (
-            <div style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>
-              <strong>Step 5: Finish Line.</strong> Tortoise crosses finish and wins!
-              <div style={{ textAlign: 'center', fontSize: '24px', margin: '6px 0' }}>🐢🏆</div>
+            <div>
+              <div className="section-title">5. Finish Line Page</div>
+              <p style={{ fontSize: '12px', margin: '0 0 10px 0', color: 'var(--ink)', lineHeight: '1.4' }}>
+                The Tortoise wins the race! The Rabbit woke up too late.
+              </p>
+              <div style={{ textAlign: 'center', fontSize: '32px', margin: '12px 0' }}>🐢🏆 🐰😢</div>
+              <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#68ae72', textAlign: 'center' }}>
+                Story Completed!
+              </p>
             </div>
           )}
 
@@ -659,7 +895,7 @@ export default function ShadowStage() {
             </button>
             <button
               className="btn-primary"
-              disabled={step === 5 || (step === 2 && !raceFinished)}
+              disabled={step === 5 || step === 2 || (step === 3 && !rabbitAsleep)}
               onClick={() => handleStepChange(step + 1)}
             >
               {step === 5 ? 'Done' : 'Next Step'}
@@ -676,16 +912,20 @@ export default function ShadowStage() {
         </div>
       )}
 
-      {/* Racetrack Overlay (Step 2 only) */}
-      {started && step === 2 && (
+      {/* Racetrack Overlay (Steps 2, 3, 4 only) */}
+      {started && (step === 2 || step === 3 || step === 4) && (
         <div className="racetrack-container">
           <div className="racetrack-title">
-            <span>Racetrack (Move hand left/right to move {playerRole === 'rabbit' ? '🐰' : '🐢'})</span>
-            <span className="finish-label">Goal: 90%</span>
+            <span>
+              {step === 2 && `Racetrack (Move hand left/right to control ${playerRole === 'rabbit' ? '🐰' : '🐢'})`}
+              {step === 3 && (playerRole === 'rabbit' ? 'Rabbit is deciding to sleep' : 'Tortoise is catching up')}
+              {step === 4 && (playerRole === 'rabbit' ? 'Tortoise is advancing steadily' : 'Crawl Tortoise to finish')}
+            </span>
+            <span className="finish-label">Goal: {step === 4 ? '90%' : '60%'}</span>
           </div>
           <div className="racetrack">
             <div className="track-line" />
-            <div className="finish-line" />
+            <div className="finish-line" style={{ right: step === 4 ? '10%' : '40%' }} />
             
             <div ref={rabbitRef} className="runner" style={{ left: '10%' }}>
               <span className="runner-avatar">🐰</span>
