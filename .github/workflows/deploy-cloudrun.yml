@@ -43,7 +43,7 @@ permissions:
 
 # ── 部署参数：优先读 GitHub Variables，没有配置时使用默认值 ───────────────
 env:
-  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'REPLACE_ME_PROJECT_ID' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'project-35f45bb4-34ae-49d7-81c' }}
   SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE || 'shadowplay' }}
   REGION: ${{ vars.CLOUD_RUN_REGION || 'asia-northeast1' }}
 
