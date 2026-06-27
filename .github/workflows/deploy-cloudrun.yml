@@ -5,27 +5,17 @@ name: 部署到 Cloud Run
 #
 #  当前项目已经迁到 Next.js，并使用仓库根目录的 Dockerfile 构建 standalone 镜像。
 #  这个 workflow 支持：
-#    - 手动触发：Actions 页面点击 Run workflow
-#    - main 分支 push 后自动部署
+#     - 手动触发：Actions 页面点击 Run workflow
+#     - main 分支 push 后自动部署
 #
 #  GitHub 侧需要配置：
 #    Repository variables:
 #      GCP_PROJECT_ID      GCP 项目 ID
-#      CLOUD_RUN_SERVICE   Cloud Run 服务名，默认 shadowplay
-#      CLOUD_RUN_REGION    部署地区，默认 asia-northeast1
+#      CLOUD_RUN_SERVICE    Cloud Run 服务名，默认 shadowplay
+#      CLOUD_RUN_REGION     部署地区，默认 asia-northeast1
 #
 #    Repository secrets:
-#      WIF_PROVIDER        Workload Identity Federation provider 资源名
-#      GCP_DEPLOY_SA       部署用 Service Account 邮箱
-#
-#  GCP 侧需要准备：
-#    - 启用 Cloud Run / Cloud Build / Artifact Registry API
-#    - 部署 SA 至少具备：
-#        roles/run.admin
-#        roles/cloudbuild.builds.editor
-#        roles/artifactregistry.writer
-#        roles/iam.serviceAccountUser
-#        roles/storage.admin
+#      GA_SA_KEY            部署用 Service Account 的 JSON 密钥内容
 # ══════════════════════════════════════════════════════════════════════════
 
 on:
@@ -40,11 +30,10 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write              # Workload Identity Federation 需要 OIDC token
 
 # ── 部署参数：优先读 GitHub Variables，没有配置时使用默认值 ───────────────
 env:
-  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'REPLACE_ME_PROJECT_ID' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'project-35f45bb4-34ae-49d7-81c' }}
   SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE || 'shadowplay' }}
   REGION: ${{ vars.CLOUD_RUN_REGION || 'asia-northeast1' }}
 
@@ -58,8 +47,7 @@ jobs:
       - name: 认证到 Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+          credentials_json: ${{ secrets.GA_SA_KEY }}
 
       - name: 安装 Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -73,7 +61,10 @@ jobs:
           region: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
           source: .
-          flags: --allow-unauthenticated
+          # 💡 核心修复：在这里显式指定用来编译的 Service Account，防止调用默认被阉割的账号
+          flags: |
+            --allow-unauthenticated
+            --build-service-account="projects/project-35f45bb4-34ae-49d7-81c/serviceAccounts/shadowplay-sa@project-35f45bb4-34ae-49d7-81c.iam.gserviceaccount.com"
 
       - name: 输出服务 URL
         run: echo "已部署到 ${{ steps.deploy.outputs.url }}"
