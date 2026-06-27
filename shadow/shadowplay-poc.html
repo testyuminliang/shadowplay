@@ -356,7 +356,7 @@ function convexHull(pts) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  One-Euro smoothing (stable, lag-free, from nail POC)
+//  One-Euro smoothing for low-latency landmark stabilization.
 // ═══════════════════════════════════════════════════════════════
 function euroMinCutoff(){ return Math.exp((1-smoothAmt)*Math.log(8)+smoothAmt*Math.log(0.4)); }
 const EURO_BETA=0.6, EURO_DCUTOFF=1.0;

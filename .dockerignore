@@ -6,6 +6,5 @@ node_modules
 *.log
 .DS_Store
 
-# 当前静态 POC 与验证套件不属于 Next.js 运行时镜像
+# 当前验证套件不属于 Next.js 运行时镜像
 verify
-# files/  ← 迁移时若把 POC 资源并入 Next.js 的 public/ 再决定是否排除

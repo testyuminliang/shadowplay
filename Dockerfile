@@ -1,8 +1,8 @@
 # ══════════════════════════════════════════════════════════════════════════
 #  Next.js (standalone) → Cloud Run 镜像（SCAFFOLD / 骨架）
 #
-#  ⚠️ 当前仓库还是静态 POC（files/nail-tryon-poc.html），尚无 Next.js 应用。
-#  这个 Dockerfile 是为 MIGRATION.md「第二步」迁到 Next.js 14 后准备的骨架，
+#  ⚠️ 当前仓库还是静态 ShadowPlay POC（shadow/*.html），尚无 Next.js 应用。
+#  这个 Dockerfile 是为后续迁到 Next.js 14 后准备的骨架，
 #  在 Next.js 项目（含 package.json / next.config.js）落地到仓库根之前，
 #  构建会失败（npm ci 找不到 package.json）。属预期占位状态。
 #

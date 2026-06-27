@@ -90,6 +90,7 @@
     <div class="ctrl"><label>边缘柔化</label><input type="range" id="blurR"  min="0"   max="20"  value="3"></div>
     <div class="ctrl"><label>浓度</label>    <input type="range" id="darkR"  min="40"  max="100" value="86"></div>
     <div class="ctrl"><label>光源偏移</label><input type="range" id="offR"   min="0"   max="60"  value="22"></div>
+    <button class="toggle" id="maskBtn">分割实验</button>
     <button class="toggle" id="camBtn">摄像头</button>
     <button class="toggle" id="dbgBtn">骨架</button>
   </div>
@@ -103,6 +104,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/selfie_segmentation.js" crossorigin="anonymous"></script>
 <script>
 const GESTURE_DEFS = [
   {id:'rabbit',   emoji:'🐰',name:'兔子',   required:[false,true,true,false,false], hint:'食指+中指竖直向上，其余三指握拳。'},
@@ -116,7 +118,7 @@ const GESTURE_DEFS = [
   {id:'crocodile',emoji:'🐊',name:'鳄鱼',   required:[true,true,true,true,true],    hint:'双手合拢，上下开合。',twoHands:true},
 ];
 
-let shadowSize=1.18,blurPx=3,darkness=0.86,lightOff=22,thickness=1.30,showDebug=false;
+let shadowSize=1.18,blurPx=3,darkness=0.86,lightOff=22,thickness=1.30,showDebug=false,useMaskShadow=false;
 let currentGesture=null,matchHoldStart=null;
 const MATCH_THRESH=0.88,MATCH_HOLD_MS=1200;
 const FINGER_LABELS=['拇','食','中','环','小'];
@@ -130,8 +132,13 @@ const off=document.createElement('canvas');
 const octx=off.getContext('2d');
 const mb=document.createElement('canvas');
 const mbx=mb.getContext('2d',{willReadFrequently:true});
+const segCache=document.createElement('canvas');
+const segCtx=segCache.getContext('2d');
+const handStencil=document.createElement('canvas');
+const stencilCtx=handStencil.getContext('2d');
 const MB_SCALE=0.5;
 let mbThresh=50,mbBlurFrac=0.06,frameScale=1;
+let lastHands=[],lastHanded=[],lastMaskAt=0;
 
 // ── Convex hull (Jarvis march) ──
 function convexHull(pts){
@@ -160,7 +167,7 @@ const BONES=[
   [17,18,.112],[18,19,.10],[19,20,.088],
 ];
 const KNUCKLES=[[0,.165],[1,.105],[5,.12],[9,.12],[13,.112],[17,.105]];
-const FINGERTIPS=[[4,.102],[8,.095],[12,.095],[16,.088],[20,.082]];
+const FINGERTIPS=[[4,.062],[8,.058],[12,.058],[16,.054],[20,.050]];
 
 // ── One-Euro smooth ──
 const EURO_BETA=0.6,EURO_DCUTOFF=1.0;
@@ -197,9 +204,12 @@ function scoreGesture(states,required){
 // ── Render ──
 function resize(){
   const vw=video.videoWidth||1280,vh=video.videoHeight||720;
-  canvas.width=vw;canvas.height=vh;
-  off.width=mb.width=Math.round(vw*MB_SCALE);
-  off.height=mb.height=Math.round(vh*MB_SCALE);
+  if(canvas.width!==vw||canvas.height!==vh){canvas.width=vw;canvas.height=vh;}
+  const sw=Math.round(vw*MB_SCALE),sh=Math.round(vh*MB_SCALE);
+  if(off.width!==sw||off.height!==sh){off.width=sw;off.height=sh;}
+  if(mb.width!==sw||mb.height!==sh){mb.width=sw;mb.height=sh;}
+  if(handStencil.width!==sw||handStencil.height!==sh){handStencil.width=sw;handStencil.height=sh;}
+  if(segCache.width!==vw||segCache.height!==vh){segCache.width=vw;segCache.height=vh;}
 }
 
 function paintSilhouette(lm,key,now){
@@ -221,6 +231,71 @@ function paintSilhouette(lm,key,now){
   for(const[a,b,wd]of BONES){octx.lineWidth=wd*tw;octx.beginPath();octx.moveTo(P[a].x,P[a].y);octx.lineTo(P[b].x,P[b].y);octx.stroke();}
   for(const[idx,r]of FINGERTIPS){octx.beginPath();octx.arc(P[idx].x,P[idx].y,r*tw,0,Math.PI*2);octx.fill();}
   octx.restore();
+}
+
+function drawHandStencil(hands,handed){
+  const w=handStencil.width,h=handStencil.height,now=performance.now();
+  stencilCtx.clearRect(0,0,w,h);
+  stencilCtx.save();
+  stencilCtx.fillStyle='#000';
+  stencilCtx.strokeStyle='#000';
+  stencilCtx.lineCap='round';
+  stencilCtx.lineJoin='round';
+  frameScale=1;
+  for(let hi=0;hi<hands.length;hi++){
+    const key=((handed[hi]?.label)||('h'+hi))+':stencil';
+    const P=hands[hi].map((p,i)=>({
+      x:smooth(key+':'+i+':x',p.x,now)*w,
+      y:smooth(key+':'+i+':y',p.y,now)*h
+    }));
+    const S=Math.hypot(P[9].x-P[0].x,P[9].y-P[0].y)||1;
+    frameScale=Math.max(frameScale,S);
+    const tw=S*thickness;
+    const palmPts=PALM_HULL_IDX.map(i=>P[i]);
+    const hull=convexHull(palmPts);
+    const hcx=hull.reduce((s,p)=>s+p.x,0)/hull.length;
+    const hcy=hull.reduce((s,p)=>s+p.y,0)/hull.length;
+    stencilCtx.beginPath();
+    hull.forEach((p,i)=>{
+      const ex=hcx+(p.x-hcx)*1.10,ey=hcy+(p.y-hcy)*1.10;
+      i===0?stencilCtx.moveTo(ex,ey):stencilCtx.lineTo(ex,ey);
+    });
+    stencilCtx.closePath();
+    stencilCtx.fill();
+    for(const[a,b,wd]of BONES){
+      stencilCtx.lineWidth=wd*tw;
+      stencilCtx.beginPath();
+      stencilCtx.moveTo(P[a].x,P[a].y);
+      stencilCtx.lineTo(P[b].x,P[b].y);
+      stencilCtx.stroke();
+    }
+    for(const[idx,r]of KNUCKLES){
+      stencilCtx.beginPath();
+      stencilCtx.arc(P[idx].x,P[idx].y,r*tw*.92,0,Math.PI*2);
+      stencilCtx.fill();
+    }
+    for(const[idx,r]of FINGERTIPS){
+      stencilCtx.beginPath();
+      stencilCtx.arc(P[idx].x,P[idx].y,r*tw*.72,0,Math.PI*2);
+      stencilCtx.fill();
+    }
+  }
+  stencilCtx.restore();
+}
+
+function paintMaskSilhouette(hands,handed){
+  if(!hands.length)return false;
+  drawHandStencil(hands,handed);
+  octx.save();
+  octx.clearRect(0,0,off.width,off.height);
+  octx.drawImage(segCache,0,0,off.width,off.height);
+  octx.globalCompositeOperation='source-in';
+  octx.fillStyle='#000';
+  octx.fillRect(0,0,off.width,off.height);
+  octx.globalCompositeOperation='destination-in';
+  octx.drawImage(handStencil,0,0);
+  octx.restore();
+  return true;
 }
 
 function metaball(){
@@ -247,6 +322,48 @@ function drawSkeleton(lm){
   for(const[a,b]of BONES){ctx.beginPath();ctx.moveTo(lm[a].x*w,lm[a].y*h);ctx.lineTo(lm[b].x*w,lm[b].y*h);ctx.stroke();}
   for(let i=0;i<21;i++){ctx.beginPath();ctx.arc(lm[i].x*w,lm[i].y*h,3,0,Math.PI*2);ctx.fill();}
   ctx.restore();
+}
+
+function renderShadowFrame(){
+  resize();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  octx.clearRect(0,0,off.width,off.height);
+  const hands=lastHands,handed=lastHanded;
+  if(!hands.length){
+    setStatus('','把手伸到镜头前');
+    if(currentGesture)updateGestureUI(0,[false,false,false,false,false]);
+    return;
+  }
+
+  const maskFresh=performance.now()-lastMaskAt<260;
+  const drewMask=useMaskShadow&&maskFresh&&paintMaskSilhouette(hands,handed);
+  setStatus('on',`${hands.length} 只手 — ${drewMask?'分割实验':'骨架影子'}`);
+
+  if(!drewMask){
+    const now=performance.now();frameScale=1;
+    for(let i=0;i<hands.length;i++){
+      const key=(handed[i]?.label)||('h'+i);
+      paintSilhouette(hands[i],key,now);
+    }
+  }
+  metaball();
+  compositeShadow();
+  if(showDebug)for(const h of hands)drawSkeleton(h);
+
+  if(currentGesture){
+    if(currentGesture.twoHands){
+      if(hands.length>=2){
+        const s0=detectFingers(hands[0]),s1=detectFingers(hands[1]);
+        updateGestureUI([...s0,...s1].filter(Boolean).length/10,[true,true,true,true,true]);
+      }else{
+        const st=detectFingers(hands[0]);
+        updateGestureUI(scoreGesture(st,currentGesture.required)*.6,st);
+      }
+    }else{
+      const st=detectFingers(hands[0]);
+      updateGestureUI(scoreGesture(st,currentGesture.required),st);
+    }
+  }
 }
 
 // ── UI ──
@@ -307,42 +424,37 @@ function updateGestureUI(score,states){
 }
 
 // ── MediaPipe Hands ──
-let handsReady=false,mpHands;
+let handsReady=false,segReady=false,mpHands,mpSeg;
 function initHands(){
   setStatus('loading','加载模型…');
   try{
     mpHands=new Hands({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`});
     mpHands.setOptions({maxNumHands:2,modelComplexity:1,minDetectionConfidence:0.5,minTrackingConfidence:0.4});
     mpHands.onResults(onResults);
-    handsReady=true;setStatus('','准备就绪 — 点击开启摄像头');
+    handsReady=true;
   }catch(e){setStatus('','模型加载失败');}
+  try{
+    mpSeg=new SelfieSegmentation({locateFile:f=>`https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${f}`});
+    mpSeg.setOptions({modelSelection:1});
+    mpSeg.onResults(onSegResults);
+    segReady=true;
+  }catch(e){segReady=false;}
+  setStatus('',segReady?'准备就绪 — 点击开启摄像头':'准备就绪 — 分割不可用，使用骨架影子');
 }
 
 function onResults(res){
+  lastHands=res.multiHandLandmarks||[];
+  lastHanded=res.multiHandedness||[];
+  renderShadowFrame();
+}
+
+function onSegResults(res){
+  if(!res.segmentationMask)return;
   resize();
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  octx.clearRect(0,0,off.width,off.height);
-  const hands=res.multiHandLandmarks||[];
-  const handed=res.multiHandedness||[];
-  if(hands.length){
-    setStatus('on',`${hands.length} 只手 — 影子已生成`);
-    const now=performance.now();frameScale=1;
-    for(let i=0;i<hands.length;i++){
-      const key=(handed[i]?.label)||('h'+i);
-      paintSilhouette(hands[i],key,now);
-    }
-    metaball();compositeShadow();
-    if(showDebug)for(const h of hands)drawSkeleton(h);
-    if(currentGesture){
-      if(currentGesture.twoHands){
-        if(hands.length>=2){const s0=detectFingers(hands[0]),s1=detectFingers(hands[1]);updateGestureUI([...s0,...s1].filter(Boolean).length/10,[true,true,true,true,true]);}
-        else{const st=detectFingers(hands[0]);updateGestureUI(scoreGesture(st,currentGesture.required)*.6,st);}
-      }else{const st=detectFingers(hands[0]);updateGestureUI(scoreGesture(st,currentGesture.required),st);}
-    }
-  }else{
-    setStatus('','把手伸到镜头前');
-    if(currentGesture)updateGestureUI(0,[false,false,false,false,false]);
-  }
+  segCtx.clearRect(0,0,segCache.width,segCache.height);
+  segCtx.drawImage(res.segmentationMask,0,0,segCache.width,segCache.height);
+  lastMaskAt=performance.now();
+  renderShadowFrame();
 }
 
 async function startCamera(){
@@ -356,7 +468,12 @@ async function startCamera(){
     video.srcObject=stream;await video.play();
     document.getElementById('startOverlay').style.display='none';
     resize();window.addEventListener('resize',resize);
-    new Camera(video,{onFrame:async()=>{if(handsReady)try{await mpHands.send({image:video});}catch(e){}},width:1280,height:720}).start();
+    let frame=0;
+    new Camera(video,{onFrame:async()=>{
+      frame++;
+      if(handsReady)try{await mpHands.send({image:video});}catch(e){}
+      if(useMaskShadow&&segReady&&frame%2===0)try{await mpSeg.send({image:video});}catch(e){segReady=false;}
+    },width:1280,height:720}).start();
   }catch(e){
     document.getElementById('startBtn').textContent='重试';
     hint.innerHTML=e.name==='NotAllowedError'?'⚠️ 摄像头权限被拒绝。':'⚠️ '+e.name+': '+e.message;
@@ -369,6 +486,7 @@ document.getElementById('sizeR').oninput=e=>shadowSize=+e.target.value/100;
 document.getElementById('blurR').oninput=e=>blurPx=+e.target.value;
 document.getElementById('darkR').oninput=e=>darkness=+e.target.value/100;
 document.getElementById('offR').oninput=e=>lightOff=+e.target.value;
+document.getElementById('maskBtn').onclick=e=>{useMaskShadow=!useMaskShadow;e.target.classList.toggle('active',useMaskShadow);renderShadowFrame();};
 document.getElementById('camBtn').onclick=e=>{stage.classList.toggle('show-cam');e.target.classList.toggle('active');};
 document.getElementById('dbgBtn').onclick=e=>{showDebug=!showDebug;e.target.classList.toggle('active');};
 document.getElementById('startBtn').onclick=startCamera;

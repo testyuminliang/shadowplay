@@ -19,7 +19,7 @@
 
 ### ① 已实现要点（与文档原方案的差异）
 
-- **单文件 POC**：`shadow/shadowplay-poc.html`，零构建，复用美甲 POC 的稳定方案（`@mediapipe/hands@0.4` script 标签 + `Camera` + One-Euro 平滑）。
+- **单文件 POC**：`shadow/shadowplay-poc.html`，零构建，采用稳定的 `@mediapipe/hands@0.4` script 标签 + `Camera` + One-Euro 平滑方案。
 - **剪影合成改进**：文档原 `drawBoneShadow` 直接画半透明胶囊，关节重叠处会更黑、有接缝。改为先在**离屏 canvas 用纯黑不透明**画骨骼胶囊 + 手掌多边形 + 关节圆，再整体一次性 `ctx.filter=blur()` + `globalAlpha` 合成到主画布 → 统一柔边剪影，无接缝。
 - **"墙壁"质感**：CSS 暖色径向渐变 + SVG 噪点纸纹；摄像头画面默认隐藏（可一键显示用于调试），所以呈现的是"真实投影"观感而非原始视频。
 - **投影感**：剪影按 `影子大小` 放大、按 `光源偏移` 平移，模拟光源角度。控制条可实时调：影子大小 / 边缘柔化 / 浓度 / 光源偏移 / 平滑。
@@ -101,10 +101,10 @@ Gemini 生成互动绘本（4~6 页，每页定义一个手势交互）
 | **停留** | "小鸟在窝里休息" → 手停在某区域 3 秒 | 坐标 + 计时器 |
 | **挥动** | "蝴蝶扇翅膀" → 手指开合 | 检测 landmark 距离变化 |
 
-### 为什么这个方向最好
-- **美甲试戴**: 竞品 10+ 家（CutieCure、Banuba、Perfect Corp），精度是核心壁垒
-- **戒指试戴**: 更卷，Perfect Corp / GlamAR / Brilliant Earth 等大厂已入场
-- **手影互动绘本**: 竞品几乎为零，学术界 2024 年才有第一个手影数据集（HaSPeR）
+### 为什么这个方向有机会
+- **互动方式有辨识度**: 用户不是只看 AI 生成内容，而是用手影参与故事。
+- **Demo 直观**: 摄像头、手影、绘本翻页都能在现场快速展示。
+- **AI 能力自然嵌入**: Gemini 负责故事和交互定义，Imagen 负责绘本场景，不是只做一层包装。
 
 ---
 
@@ -718,9 +718,9 @@ steps:
 
 ---
 
-## 之前的美甲 POC 迭代经验（仍然适用）
+## MediaPipe / Canvas 实践记录
 
-这些经验来自 5 轮美甲 POC 迭代，对 ShadowPlay 同样有效：
+这些经验对 ShadowPlay 的实时摄像头和画布渲染同样适用：
 
 1. **MediaPipe 加载**: 用 `@mediapipe/hands` script 标签比 `@mediapipe/tasks-vision` ES module 更稳定，后者在部分浏览器/网络下 WASM 加载会失败
 2. **Canvas 镜像**: video 和 canvas 都用 CSS `transform: scaleX(-1)` 翻转，landmark 坐标用原始值
