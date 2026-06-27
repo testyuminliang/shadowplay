@@ -27,7 +27,8 @@ const BACKGROUNDS = ['/背景1.png', '/背景2.png', '/背景3.png', '/背景4.p
 const RABBIT_RUN = '/兔子奔跑-removebg-preview.png';
 const RABBIT_SLEEP = '/兔子睡觉-removebg-preview.png';
 const TORTOISE_RUN = '/乌龟奔跑-removebg-preview.png';
-const RABBIT_GESTURE_GUIDE = '/rabbit-gesture-guide.svg';
+const RABBIT_GESTURE_GUIDE = '/rabbit-gesture-original.png';
+const RABBIT_GESTURE_FALLBACK = '/rabbit-gesture-guide.svg';
 
 const SCRIPT_URLS = [
   'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js',
@@ -711,7 +712,14 @@ export default function ShadowStage() {
       {started && step === 0 && (
         <div className="guide-overlay tutorial-overlay">
           <div className="guide-card">
-            <img className="gesture-guide-image" src={RABBIT_GESTURE_GUIDE} alt="Rabbit hand shadow gesture guide" />
+            <img
+              className="gesture-guide-image"
+              src={RABBIT_GESTURE_GUIDE}
+              alt="Rabbit hand shadow gesture guide"
+              onError={(event) => {
+                event.currentTarget.src = RABBIT_GESTURE_FALLBACK;
+              }}
+            />
             <h3 className="guide-title">Rabbit Shadow Gesture</h3>
             <p className="guide-desc">
               Make a rabbit shadow with your hand. When your hand is detected, touch the button to begin.
