@@ -1,8 +1,17 @@
 # dependencies
 node_modules/
 
+# next
+.next/
+out/
+
+# env
+.env
+.env*.local
+
 # macOS
 .DS_Store
 
 # logs / temp
 *.log
+npm-debug.log*
