@@ -256,14 +256,12 @@ export default function ShadowStage() {
   const maskRef = useRef<HTMLCanvasElement | null>(null);
   const mergedRef = useRef<HTMLCanvasElement | null>(null);
   const filterRef = useRef<Map<string, OneEuro>>(new Map());
-  const tuningRef = useRef<ShadowTuning>(DEFAULT_TUNING);
 
   // MediaPipe / UI state
   const [status, setStatus] = useState('Loading model...');
   const [state, setState] = useState<'loading' | 'idle' | 'ready'>('loading');
   const [started, setStarted] = useState(false);
   const [error, setError] = useState('');
-  const [tuning, setTuning] = useState<ShadowTuning>(DEFAULT_TUNING);
 
   // Background / sprite state (from wan branch)
   const [bgIndex, setBgIndex] = useState(0);
@@ -326,14 +324,6 @@ export default function ShadowStage() {
       const label = tortoiseRef.current.querySelector('.runner-label');
       if (label) label.textContent = `Tortoise ${rounded}%`;
     }
-  }, []);
-
-  const updateTuning = useCallback((key: keyof ShadowTuning, value: number) => {
-    setTuning((current) => {
-      const next = { ...current, [key]: value };
-      tuningRef.current = next;
-      return next;
-    });
   }, []);
 
   // Load MediaPipe scripts
@@ -451,7 +441,7 @@ export default function ShadowStage() {
 
     let scale = 1;
     const now = performance.now();
-    const tuningNow = tuningRef.current;
+    const tuningNow = DEFAULT_TUNING;
     for (let index = 0; index < hands.length; index += 1) {
       const key = handedness[index]?.label ?? `hand-${index}`;
       scale = Math.max(scale, drawHandMask(maskCtx, hands[index], maskWidth, maskHeight, key, now, filterRef.current, tuningNow));
@@ -842,29 +832,6 @@ export default function ShadowStage() {
         </div>
       )}
 
-      {started && step > 0 && (
-        <section className="tuning-panel" aria-label="Shadow tuning">
-          <TuneSlider label="Finger width" value={tuning.thickness} min={0.65} max={1.35} step={0.01} display={tuning.thickness.toFixed(2)} onChange={(v) => updateTuning('thickness', v)} />
-          <TuneSlider label="Tip size" value={tuning.tipScale} min={0} max={1.8} step={0.01} display={tuning.tipScale.toFixed(2)} onChange={(v) => updateTuning('tipScale', v)} />
-          <TuneSlider label="Merge threshold" value={tuning.mergeThreshold} min={40} max={130} step={1} display={String(tuning.mergeThreshold)} onChange={(v) => updateTuning('mergeThreshold', v)} />
-          <TuneSlider label="Merge strength" value={tuning.mergeBlur} min={0.015} max={0.075} step={0.001} display={tuning.mergeBlur.toFixed(3)} onChange={(v) => updateTuning('mergeBlur', v)} />
-          <TuneSlider label="Edge softness" value={tuning.edgeBlur} min={0} max={8} step={0.1} display={tuning.edgeBlur.toFixed(1)} onChange={(v) => updateTuning('edgeBlur', v)} />
-        </section>
-      )}
     </main>
-  );
-}
-
-function TuneSlider({
-  label, value, min, max, step, display, onChange,
-}: {
-  label: string; value: number; min: number; max: number; step: number; display: string; onChange: (value: number) => void;
-}) {
-  return (
-    <label className="tune">
-      <span className="tune-label">{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
-      <span className="tune-value">{display}</span>
-    </label>
   );
 }
