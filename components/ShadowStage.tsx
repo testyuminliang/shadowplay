@@ -27,6 +27,27 @@ const SCRIPT_URLS = [
   'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js',
 ];
 
+const MB_SCALE = 0.5;
+const SHADOW_SIZE = 1.18;
+const SHADOW_DARKNESS = 0.86;
+const LIGHT_OFFSET = 22;
+
+type ShadowTuning = {
+  thickness: number;
+  tipScale: number;
+  mergeThreshold: number;
+  mergeBlur: number;
+  edgeBlur: number;
+};
+
+const DEFAULT_TUNING: ShadowTuning = {
+  thickness: 0.68,
+  tipScale: 0.35,
+  mergeThreshold: 50,
+  mergeBlur: 0.062,
+  edgeBlur: 3,
+};
+
 const PALM = [0, 1, 2, 5, 9, 13, 17];
 const BONES: Array<[number, number, number]> = [
   [0, 5, 0.2],
@@ -39,35 +60,71 @@ const BONES: Array<[number, number, number]> = [
   [0, 1, 0.15],
   [1, 2, 0.14],
   [2, 3, 0.13],
-  [3, 4, 0.105],
+  [3, 4, 0.115],
   [5, 6, 0.13],
-  [6, 7, 0.116],
-  [7, 8, 0.098],
+  [6, 7, 0.118],
+  [7, 8, 0.105],
   [9, 10, 0.13],
-  [10, 11, 0.116],
-  [11, 12, 0.098],
-  [13, 14, 0.12],
-  [14, 15, 0.106],
-  [15, 16, 0.09],
-  [17, 18, 0.11],
-  [18, 19, 0.096],
-  [19, 20, 0.08],
+  [10, 11, 0.118],
+  [11, 12, 0.105],
+  [13, 14, 0.122],
+  [14, 15, 0.11],
+  [15, 16, 0.098],
+  [17, 18, 0.112],
+  [18, 19, 0.1],
+  [19, 20, 0.088],
 ];
 const JOINTS: Array<[number, number]> = [
-  [0, 0.16],
-  [1, 0.1],
-  [5, 0.116],
-  [9, 0.116],
-  [13, 0.108],
-  [17, 0.1],
+  [0, 0.165],
+  [1, 0.105],
+  [5, 0.12],
+  [9, 0.12],
+  [13, 0.112],
+  [17, 0.105],
 ];
 const TIPS: Array<[number, number]> = [
-  [4, 0.052],
-  [8, 0.05],
-  [12, 0.05],
-  [16, 0.046],
-  [20, 0.042],
+  [4, 0.102],
+  [8, 0.095],
+  [12, 0.095],
+  [16, 0.088],
+  [20, 0.082],
 ];
+const EURO_BETA = 0.6;
+const EURO_DCUTOFF = 1.0;
+
+function euroMinCutoff() {
+  return Math.exp((1 - 0.55) * Math.log(8) + 0.55 * Math.log(0.4));
+}
+
+class OneEuro {
+  private xp: number | null = null;
+  private dp = 0;
+  private tp: number | null = null;
+
+  private alpha(cutoff: number, dt: number) {
+    return 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+  }
+
+  filter(value: number, time: number) {
+    if (this.tp === null || this.xp === null) {
+      this.tp = time;
+      this.xp = value;
+      return value;
+    }
+
+    let dt = (time - this.tp) / 1000;
+    if (!(dt > 0)) dt = 1 / 60;
+    this.tp = time;
+
+    const dx = (value - this.xp) / dt;
+    const ad = this.alpha(EURO_DCUTOFF, dt);
+    this.dp = ad * dx + (1 - ad) * this.dp;
+
+    const a = this.alpha(euroMinCutoff() + EURO_BETA * Math.abs(this.dp), dt);
+    this.xp = a * value + (1 - a) * this.xp;
+    return this.xp;
+  }
+}
 
 function loadScript(src: string) {
   return new Promise<void>((resolve, reject) => {
@@ -117,14 +174,32 @@ function drawHandMask(
   landmarks: Landmark[],
   width: number,
   height: number,
+  key: string,
+  time: number,
+  filters: Map<string, OneEuro>,
+  tuning: ShadowTuning,
 ) {
-  const points = landmarks.map((point) => ({ x: point.x * width, y: point.y * height }));
+  const smooth = (filterKey: string, value: number) => {
+    let filter = filters.get(filterKey);
+    if (!filter) {
+      filter = new OneEuro();
+      filters.set(filterKey, filter);
+    }
+    return filter.filter(value, time);
+  };
+
+  const points = landmarks.map((point, index) => ({
+    x: smooth(`${key}:${index}:x`, point.x) * width,
+    y: smooth(`${key}:${index}:y`, point.y) * height,
+  }));
   const palmSpan = Math.hypot(points[9].x - points[0].x, points[9].y - points[0].y) || 1;
   const palmHull = hull(PALM.map((index) => points[index]));
   const center = palmHull.reduce(
     (sum, point) => ({ x: sum.x + point.x / palmHull.length, y: sum.y + point.y / palmHull.length }),
     { x: 0, y: 0 },
   );
+
+  const strokeScale = palmSpan * tuning.thickness;
 
   ctx.save();
   ctx.fillStyle = '#000';
@@ -143,7 +218,7 @@ function drawHandMask(
   ctx.fill();
 
   for (const [from, to, weight] of BONES) {
-    ctx.lineWidth = palmSpan * weight;
+    ctx.lineWidth = strokeScale * weight;
     ctx.beginPath();
     ctx.moveTo(points[from].x, points[from].y);
     ctx.lineTo(points[to].x, points[to].y);
@@ -152,13 +227,13 @@ function drawHandMask(
 
   for (const [index, radius] of JOINTS) {
     ctx.beginPath();
-    ctx.arc(points[index].x, points[index].y, palmSpan * radius, 0, Math.PI * 2);
+    ctx.arc(points[index].x, points[index].y, strokeScale * radius, 0, Math.PI * 2);
     ctx.fill();
   }
 
   for (const [index, radius] of TIPS) {
     ctx.beginPath();
-    ctx.arc(points[index].x, points[index].y, palmSpan * radius, 0, Math.PI * 2);
+    ctx.arc(points[index].x, points[index].y, strokeScale * radius * tuning.tipScale, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -171,10 +246,21 @@ export default function ShadowStage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const maskRef = useRef<HTMLCanvasElement | null>(null);
   const mergedRef = useRef<HTMLCanvasElement | null>(null);
+  const filterRef = useRef<Map<string, OneEuro>>(new Map());
+  const tuningRef = useRef<ShadowTuning>(DEFAULT_TUNING);
   const [status, setStatus] = useState('加载模型中...');
   const [state, setState] = useState<'loading' | 'idle' | 'ready'>('loading');
   const [started, setStarted] = useState(false);
   const [error, setError] = useState('');
+  const [tuning, setTuning] = useState<ShadowTuning>(DEFAULT_TUNING);
+
+  const updateTuning = useCallback((key: keyof ShadowTuning, value: number) => {
+    setTuning((current) => {
+      const next = { ...current, [key]: value };
+      tuningRef.current = next;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,11 +303,13 @@ export default function ShadowStage() {
     if (!mergedRef.current) mergedRef.current = document.createElement('canvas');
     const mask = maskRef.current;
     const merged = mergedRef.current;
-    if (mask.width !== width || mask.height !== height) {
-      mask.width = width;
-      mask.height = height;
-      merged.width = width;
-      merged.height = height;
+    const maskWidth = Math.round(width * MB_SCALE);
+    const maskHeight = Math.round(height * MB_SCALE);
+    if (mask.width !== maskWidth || mask.height !== maskHeight) {
+      mask.width = maskWidth;
+      mask.height = maskHeight;
+      merged.width = maskWidth;
+      merged.height = maskHeight;
     }
 
     const ctx = canvas.getContext('2d');
@@ -230,8 +318,9 @@ export default function ShadowStage() {
     if (!ctx || !maskCtx || !mergedCtx) return;
 
     ctx.clearRect(0, 0, width, height);
-    maskCtx.clearRect(0, 0, width, height);
+    maskCtx.clearRect(0, 0, maskWidth, maskHeight);
     const hands = result.multiHandLandmarks ?? [];
+    const handedness = result.multiHandedness ?? [];
 
     if (!hands.length) {
       setStatus('把手伸到镜头前');
@@ -240,31 +329,36 @@ export default function ShadowStage() {
     }
 
     let scale = 1;
-    for (const hand of hands) {
-      scale = Math.max(scale, drawHandMask(maskCtx, hand, width, height));
+    const now = performance.now();
+    const tuningNow = tuningRef.current;
+    for (let index = 0; index < hands.length; index += 1) {
+      const key = handedness[index]?.label ?? `hand-${index}`;
+      scale = Math.max(
+        scale,
+        drawHandMask(maskCtx, hands[index], maskWidth, maskHeight, key, now, filterRef.current, tuningNow),
+      );
     }
 
-    mergedCtx.clearRect(0, 0, width, height);
+    mergedCtx.clearRect(0, 0, maskWidth, maskHeight);
     mergedCtx.save();
-    mergedCtx.filter = `blur(${Math.max(2, scale * 0.045)}px)`;
+    mergedCtx.filter = `blur(${Math.max(0.5, scale * tuningNow.mergeBlur)}px)`;
     mergedCtx.drawImage(mask, 0, 0);
     mergedCtx.restore();
 
-    const image = mergedCtx.getImageData(0, 0, width, height);
+    const image = mergedCtx.getImageData(0, 0, maskWidth, maskHeight);
     const data = image.data;
     for (let i = 3; i < data.length; i += 4) {
-      data[i] = data[i] > 86 ? 255 : 0;
+      data[i] = data[i] >= tuningNow.mergeThreshold ? 255 : 0;
     }
     mergedCtx.putImageData(image, 0, 0);
 
     ctx.save();
-    ctx.globalAlpha = 0.86;
-    ctx.filter = 'blur(3px)';
-    const offset = Math.max(16, scale * 0.16);
-    ctx.translate(width / 2 + offset, height / 2 + offset * 0.66);
-    ctx.scale(1.16, 1.16);
+    ctx.globalAlpha = SHADOW_DARKNESS;
+    ctx.filter = `blur(${tuningNow.edgeBlur}px)`;
+    ctx.translate(width / 2 + LIGHT_OFFSET, height / 2 + LIGHT_OFFSET * 0.7);
+    ctx.scale(SHADOW_SIZE, SHADOW_SIZE);
     ctx.translate(-width / 2, -height / 2);
-    ctx.drawImage(merged, 0, 0);
+    ctx.drawImage(merged, 0, 0, width, height);
     ctx.restore();
 
     setStatus(`${hands.length} 只手 - 影子已生成`);
@@ -342,6 +436,89 @@ export default function ShadowStage() {
           </section>
         </div>
       )}
+
+      {started && (
+        <section className="tuning-panel" aria-label="手影参数">
+          <TuneSlider
+            label="手指粗细"
+            value={tuning.thickness}
+            min={0.65}
+            max={1.35}
+            step={0.01}
+            display={tuning.thickness.toFixed(2)}
+            onChange={(value) => updateTuning('thickness', value)}
+          />
+          <TuneSlider
+            label="指尖大小"
+            value={tuning.tipScale}
+            min={0}
+            max={1.8}
+            step={0.01}
+            display={tuning.tipScale.toFixed(2)}
+            onChange={(value) => updateTuning('tipScale', value)}
+          />
+          <TuneSlider
+            label="融合阈值"
+            value={tuning.mergeThreshold}
+            min={40}
+            max={130}
+            step={1}
+            display={String(tuning.mergeThreshold)}
+            onChange={(value) => updateTuning('mergeThreshold', value)}
+          />
+          <TuneSlider
+            label="融合强度"
+            value={tuning.mergeBlur}
+            min={0.015}
+            max={0.075}
+            step={0.001}
+            display={tuning.mergeBlur.toFixed(3)}
+            onChange={(value) => updateTuning('mergeBlur', value)}
+          />
+          <TuneSlider
+            label="边缘柔化"
+            value={tuning.edgeBlur}
+            min={0}
+            max={8}
+            step={0.1}
+            display={tuning.edgeBlur.toFixed(1)}
+            onChange={(value) => updateTuning('edgeBlur', value)}
+          />
+        </section>
+      )}
     </main>
+  );
+}
+
+function TuneSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  display,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="tune">
+      <span className="tune-label">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <span className="tune-value">{display}</span>
+    </label>
   );
 }
